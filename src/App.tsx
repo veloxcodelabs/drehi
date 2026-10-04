@@ -96,6 +96,7 @@ export default function App() {
   // Settings: default 3:4 aspect ratio (fashion standard), 2K resolution
   const [aspectRatio, setAspectRatio] = useState('3:4');
   const [resolution, setResolution] = useState('2k');
+  const [extraInstructions, setExtraInstructions] = useState('');
 
   // Execution & Task State
   const [currentTask, setCurrentTask] = useState<GenerationTask | null>(null);
@@ -361,6 +362,8 @@ export default function App() {
 
     const requestPayloadInput = {
       prompt: autoPrompt,
+      extra_instructions: extraInstructions,
+      // Order is the garment, then the person. The image API has no separate fields.
       img_urls: [garmentImage.url, modelImage.url],
       aspect_ratio: aspectRatio,
       resolution: resolution,
@@ -498,6 +501,21 @@ export default function App() {
                       modelImage={modelImage}
                       onModelChange={setModelImage}
                     />
+
+                    <div className="space-y-1.5">
+                      <label htmlFor="extra-instructions" className="block text-sm font-semibold text-neutral-900">
+                        Допълнителни инструкции (по избор)
+                      </label>
+                      <textarea
+                        id="extra-instructions"
+                        rows={2}
+                        maxLength={300}
+                        value={extraInstructions}
+                        onChange={(e) => setExtraInstructions(e.target.value)}
+                        placeholder="напр. дрехата да е по-дълга, светъл фон"
+                        className="w-full bg-white border border-neutral-200 focus:border-neutral-900 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none transition-colors resize-none leading-relaxed shadow-xs"
+                      />
+                    </div>
 
                     {/* Small "Настройки" link for Aspect Ratio & Resolution */}
                     <ModelParameters

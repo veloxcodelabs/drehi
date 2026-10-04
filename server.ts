@@ -14,6 +14,7 @@ import {
   sanitizeCode,
   saveTaskSuccess,
   getTasksForCode,
+  getTaskModelImageUrl,
   isTaskOwnedByCode,
   addCreditsToCode,
   resetCodeUsage,
@@ -27,6 +28,13 @@ import {
   STORAGE_PUBLIC_MESSAGE,
   UNCONFIGURED_PUBLIC_MESSAGE,
 } from './generation_errors.js';
+import { applyExtraInstructions } from './extra_instructions.js';
+import {
+  GARMENT_UNRECOGNIZED_MESSAGE,
+  outputMatchesModelPhoto,
+  upstreamSignalsUnappliedGarment,
+  withGarmentRoles,
+} from './garment_check.js';
 
 dotenv.config();
 
@@ -426,7 +434,9 @@ app.post('/api/test-connection', async (req: Request, res: Response) => {
 app.post('/api/tasks/create', async (req: Request, res: Response) => {
   let reservationId: string | undefined;
   try {
-    const { version, input, simulate, webhook_url } = req.body;
+    const { version, simulate, webhook_url } = req.body;
+    // Optional shopper note. Empty text leaves the prompt exactly as the client sent it.
+    const input = applyExtraInstructions(req.body?.input);
     const token = getServerToken();
 
     // Strict access code enforcement. Client tokens are ignored.
@@ -566,6 +576,14 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
       processedInput.target_image = await ensurePublicImageUrl(processedInput.target_image);
     }
 
+    const referenceUrls = Array.isArray(processedInput.img_urls)
+      ? processedInput.img_urls.filter((url: unknown) => typeof url === 'string' && url)
+      : [];
+    // This model has no garment/person fields. Name the two images only for a try-on pair.
+    if (referenceUrls.length === 2) {
+      processedInput.prompt = withGarmentRoles(processedInput.prompt, referenceUrls.length);
+    }
+
     // Real API call to cloud model engine
     const requestPayload: any = {
       version,
@@ -621,11 +639,12 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
     }
 
     await registerPendingTask(createdTaskId, accessCode, {
-      prompt: input?.prompt || '',
+      prompt: processedInput.prompt || input?.prompt || '',
       modelName: input?.modelName || 'GPT Image 2.5',
       version,
       aspectRatio: input?.aspect_ratio || '1:1',
       resolution: input?.resolution || '2k',
+      modelImageUrl: referenceUrls[1] || '',
     }, reservationId);
 
     if (responseData?.result) {
@@ -729,6 +748,34 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
     // Count the try only after a successful image. Failures release the hold.
     const taskStatus = responseData?.result?.status;
     if (taskStatus === 'succeeded') {
+      const outputUrls = Array.isArray(responseData?.result?.output) ? responseData.result.output : [];
+      const outputUrl = typeof outputUrls[0] === 'string' ? outputUrls[0] : '';
+      const modelUrl = await getTaskModelImageUrl(taskId);
+      const signaled = upstreamSignalsUnappliedGarment(responseData?.result);
+      let unchanged: boolean | null = false;
+      if (!signaled && outputUrl && modelUrl) {
+        unchanged = await outputMatchesModelPhoto(outputUrl, modelUrl, token);
+        if (unchanged === null) {
+          console.warn(`[Garment check] Could not compare task ${taskId} with the model photo. Counting the result.`);
+          unchanged = false;
+        }
+      }
+      if (signaled || unchanged) {
+        const why = signaled ? 'upstream reported the garment was not applied' : 'output matched the model photo';
+        console.warn(`[Garment check] ${why}; refunding task ${taskId}`);
+        const fin = await finalizeTaskResult(taskId, false, why);
+        if (responseData?.result) {
+          responseData.result.status = 'failed';
+          responseData.result.output = [];
+          responseData.result.error = GARMENT_UNRECOGNIZED_MESSAGE;
+          responseData.result.failureCode = 'GARMENT_NOT_APPLIED';
+          responseData.result.remaining = fin.remaining;
+          responseData.result.dailyRemaining = fin.dailyRemaining;
+          responseData.result.dailyLimitReached = fin.dailyLimitReached;
+        }
+        return res.json(responseData);
+      }
+
       const fin = await finalizeTaskResult(taskId, true, 'Task completed successfully', {
         outputUrls: responseData?.result?.output || [],
         predictTime: responseData?.result?.predict_time,
@@ -753,7 +800,9 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
       logUpstreamFailure(`task-status ${taskStatus} task=${taskId}`, classified, rawError);
       const fin = await finalizeTaskResult(taskId, false, classified.summary);
       if (responseData?.result) {
-        responseData.result.error = classified.publicMessage;
+        responseData.result.error = upstreamSignalsUnappliedGarment(responseData.result)
+          ? GARMENT_UNRECOGNIZED_MESSAGE
+          : classified.publicMessage;
         responseData.result.remaining = fin.remaining;
         responseData.result.dailyRemaining = fin.dailyRemaining;
         responseData.result.dailyLimitReached = fin.dailyLimitReached;
