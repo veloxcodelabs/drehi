@@ -1,5 +1,43 @@
 import { GenerationTask, TaskApiResult, AccessCodeStatus } from '../types';
-import { isKnownInviteCode } from './codes';
+
+export class ApiRequestError extends Error {
+  status: number;
+  code?: string;
+  remaining?: number;
+  dailyRemaining?: number;
+  dailyLimitReached?: boolean;
+  used?: number;
+  totalAllowed?: number;
+
+  constructor(
+    message: string,
+    extra: {
+      status?: number;
+      code?: string;
+      remaining?: number;
+      dailyRemaining?: number;
+      dailyLimitReached?: boolean;
+      used?: number;
+      totalAllowed?: number;
+    } = {}
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = extra.status ?? 500;
+    this.code = extra.code;
+    this.remaining = extra.remaining;
+    this.dailyRemaining = extra.dailyRemaining;
+    this.dailyLimitReached = extra.dailyLimitReached;
+    this.used = extra.used;
+    this.totalAllowed = extra.totalAllowed;
+  }
+}
+
+async function readJsonBody(res: Response): Promise<any | null> {
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) return null;
+  return res.json().catch(() => null);
+}
 
 const SIMULATE_STORAGE_KEY = 'studio_simulate_mode';
 const HISTORY_STORAGE_KEY = 'studio_task_history_v1';
@@ -130,205 +168,122 @@ export async function checkApiHealth(): Promise<{ success: boolean; message: str
   }
 }
 
+const emptyAccessStatus = (code = ''): AccessCodeStatus => ({
+  valid: false,
+  code,
+  remaining: 0,
+  totalAllowed: 0,
+  used: 0,
+  dailyRemaining: 0,
+  dailyLimitReached: false,
+});
+
 /**
- * Validate access code with server, with client-side offline fallback for Vercel/static deployments.
+ * Remaining tries come only from the server. There is no browser-side counter.
  */
 export async function validateAccessCode(code: string): Promise<AccessCodeStatus> {
   const cleanCode = (code || '').trim().toLowerCase();
-  if (!cleanCode) {
-    return {
-      valid: false,
-      code: '',
-      remaining: 0,
-      totalAllowed: 0,
-      used: 0,
-      dailyRemaining: 0,
-      dailyLimitReached: false,
-    };
-  }
+  if (!cleanCode) return emptyAccessStatus('');
 
-  // 1. Attempt server-side check
   try {
-    const res = await fetch(`/api/auth-code?k=${encodeURIComponent(cleanCode)}`);
-    const ct = res.headers.get('content-type') || '';
-    if (res.ok && ct.includes('application/json')) {
-      const data = await res.json();
-      if (data && typeof data.valid === 'boolean') {
-        return data;
-      }
+    const res = await fetch(`/api/auth-code?k=${encodeURIComponent(cleanCode)}`, {
+      cache: 'no-store',
+    });
+    const data = await readJsonBody(res);
+    if (data && typeof data.valid === 'boolean' && typeof data.remaining === 'number') {
+      return data;
     }
+    return {
+      ...emptyAccessStatus(cleanCode),
+      message: data?.message || data?.error || 'Връзката със сървъра не успя. Моля, опреснете страницата.',
+    };
   } catch (err) {
-    console.warn('[Access Code] Server endpoint unreachable, checking client fallback:', err);
-  }
-
-  // 2. Client-side fallback for static deployments (e.g. Vercel static or GitHub Pages)
-  const isValid = isKnownInviteCode(cleanCode);
-  if (!isValid) {
+    console.warn('[Access Code] Server endpoint unreachable:', err);
     return {
-      valid: false,
-      code: cleanCode,
-      remaining: 0,
-      totalAllowed: 0,
-      used: 0,
-      dailyRemaining: 0,
-      dailyLimitReached: false,
-      message: 'Невалиден код за достъп.',
+      ...emptyAccessStatus(cleanCode),
+      message: 'Връзката със сървъра не успя. Моля, опреснете страницата.',
     };
   }
-
-  // Track code trial count in browser storage
-  let used = 0;
-  try {
-    const stored = localStorage.getItem(`studio_code_used_${cleanCode}`);
-    if (stored !== null) {
-      used = Number(stored) || 0;
-    }
-  } catch {}
-
-  const totalAllowed = 3;
-  const remaining = Math.max(0, totalAllowed - used);
-
-  return {
-    valid: true,
-    code: cleanCode,
-    remaining,
-    totalAllowed,
-    used,
-    dailyRemaining: 300,
-    dailyLimitReached: remaining <= 0,
-  };
 }
 
-// Client-side simulated tasks cache for static hosting fallback
-const clientSimulatedTasks = new Map<string, TaskApiResult>();
-const FALLBACK_LOOKBOOK_OUTPUTS = [
-  'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=1200&q=80',
-];
+export interface CreatedTask {
+  taskId: string;
+  cost?: number;
+  isSimulated?: boolean;
+  remaining?: number;
+  dailyRemaining?: number;
+  dailyLimitReached?: boolean;
+}
 
-// Create generation task
+// Create generation task. Errors are thrown so the UI can show the server message.
 export async function createTask(params: {
   version: string;
   input: Record<string, any>;
   simulate?: boolean;
   accessCode?: string;
-}): Promise<{ taskId: string; cost?: number; isSimulated?: boolean; remaining?: number }> {
+}): Promise<CreatedTask> {
   const simulate = params.simulate ?? false;
+  const res = await fetch('/api/tasks/create', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(params.accessCode ? { 'x-access-code': params.accessCode } : {}),
+    },
+    body: JSON.stringify({
+      version: params.version,
+      input: params.input,
+      simulate,
+      accessCode: params.accessCode,
+    }),
+  });
 
-  try {
-    const res = await fetch('/api/tasks/create', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(params.accessCode ? { 'x-access-code': params.accessCode } : {}),
-      },
-      body: JSON.stringify({
-        version: params.version,
-        input: params.input,
-        simulate,
-        accessCode: params.accessCode,
-      }),
-    });
+  const data = await readJsonBody(res);
+  if (res.ok && data?.code === 200 && data.result?.task_id) {
+    return {
+      taskId: data.result.task_id,
+      cost: data.result.task_cost,
+      isSimulated: data.result.isSimulated || false,
+      remaining: typeof data.result.remaining === 'number' ? data.result.remaining : undefined,
+      dailyRemaining: data.result.dailyRemaining,
+      dailyLimitReached: data.result.dailyLimitReached,
+    };
+  }
 
-    const ct = res.headers.get('content-type') || '';
-    if (res.ok && ct.includes('application/json')) {
-      const data = await res.json();
-      if (data.code === 200 && data.result) {
-        return {
-          taskId: data.result.task_id,
-          cost: data.result.task_cost,
-          isSimulated: data.result.isSimulated || false,
-          remaining: data.result.remaining,
-        };
-      }
+  throw new ApiRequestError(
+    data?.error || 'Възникна грешка при стартиране на генерацията.',
+    {
+      status: res.status,
+      code: typeof data?.code === 'string' ? data.code : undefined,
+      remaining: typeof data?.remaining === 'number' ? data.remaining : undefined,
+      dailyRemaining: data?.dailyRemaining,
+      dailyLimitReached: data?.dailyLimitReached,
+      used: data?.used,
+      totalAllowed: data?.totalAllowed,
     }
-  } catch (err) {
-    console.warn('[Task Create] Server call failed, using client simulation fallback:', err);
-  }
-
-  // Fallback for static Vercel deployment: generate simulated task
-  const taskId = 'sim_' + Math.random().toString(36).substring(2, 10);
-  const randomOutput = FALLBACK_LOOKBOOK_OUTPUTS[Math.floor(Math.random() * FALLBACK_LOOKBOOK_OUTPUTS.length)];
-
-  // Decrement code remaining in localStorage
-  if (params.accessCode) {
-    const cleanCode = params.accessCode.toLowerCase().trim();
-    try {
-      const currentUsed = Number(localStorage.getItem(`studio_code_used_${cleanCode}`) || 0);
-      localStorage.setItem(`studio_code_used_${cleanCode}`, String(currentUsed + 1));
-    } catch {}
-  }
-
-  // Pre-register task to succeed after 3 seconds
-  const simTask: TaskApiResult = {
-    task_id: taskId,
-    version: params.version,
-    status: 'processing',
-    output: [],
-    predict_time: 4.5,
-    total_time: 6.0,
-    create_at: Math.floor(Date.now() / 1000),
-    completed_at: null,
-    isSimulated: true,
-  };
-  clientSimulatedTasks.set(taskId, simTask);
-
-  // Transition to succeeded after 3.5s
-  setTimeout(() => {
-    clientSimulatedTasks.set(taskId, {
-      ...simTask,
-      status: 'succeeded',
-      output: [randomOutput],
-      completed_at: Math.floor(Date.now() / 1000),
-    });
-  }, 3500);
-
-  return {
-    taskId,
-    cost: 10,
-    isSimulated: true,
-    remaining: 2,
-  };
+  );
 }
 
-// Fetch task status
+// Fetch task status. Remaining tries, when present, are the server's number.
 export async function getTask(taskId: string, accessCode?: string): Promise<TaskApiResult> {
-  // Check client simulated store first
-  if (clientSimulatedTasks.has(taskId)) {
-    return clientSimulatedTasks.get(taskId)!;
-  }
-
   const url = `/api/tasks/${encodeURIComponent(taskId)}`;
-
-  try {
-    const res = await fetch(url, {
-      headers: {
-        ...(accessCode ? { 'x-access-code': accessCode } : {}),
-      },
-    });
-    const ct = res.headers.get('content-type') || '';
-    if (res.ok && ct.includes('application/json')) {
-      const data = await res.json();
-      if (data.code === 200 && data.result) {
-        return data.result;
-      }
-    }
-  } catch (err) {
-    console.warn('[Task Get] Fetch error:', err);
+  const res = await fetch(url, {
+    cache: 'no-store',
+    headers: {
+      ...(accessCode ? { 'x-access-code': accessCode } : {}),
+    },
+  });
+  const data = await readJsonBody(res);
+  if (res.ok && data?.code === 200 && data.result) {
+    return data.result;
   }
-
-  // Fallback if task is simulated or lost
-  return {
-    task_id: taskId,
-    version: 'cce611c44553ba5f061813d75a1e5f93d8c901047528da275f667ebe7d784565',
-    status: 'succeeded',
-    output: [FALLBACK_LOOKBOOK_OUTPUTS[0]],
-    predict_time: 4.2,
-    total_time: 5.5,
-    isSimulated: true,
-  };
+  throw new ApiRequestError(
+    data?.error || 'Неуспешна проверка на генерацията.',
+    {
+      status: res.status,
+      code: typeof data?.code === 'string' ? data.code : undefined,
+      remaining: typeof data?.remaining === 'number' ? data.remaining : undefined,
+    }
+  );
 }
 
 // Get image proxy URL for seamless viewing and downloading
@@ -356,24 +311,16 @@ export async function submitSupportLetter(
       body: JSON.stringify(payload),
     });
 
-    const ct = res.headers.get('content-type') || '';
-    if (res.ok && ct.includes('application/json')) {
-      const data = await res.json();
-      if (data.success) {
-        return data;
-      }
+    const data = await readJsonBody(res);
+    if (res.ok && data?.success) {
+      return data;
     }
+    throw new ApiRequestError(data?.error || 'Възникна грешка при изпращането. Моля, опитайте отново.', {
+      status: res.status,
+    });
   } catch (err) {
+    if (err instanceof ApiRequestError) throw err;
     console.warn('Support letter server submission failed:', err);
+    throw new ApiRequestError('Връзката със сървъра не успя. Моля, опитайте отново.');
   }
-
-  // Resilient fallback for static hosting
-  const refNumber = `REF-${Math.floor(100000 + Math.random() * 900000)}`;
-  return {
-    success: true,
-    id: `sub_${Date.now()}`,
-    refNumber,
-    pdfDownloadUrl: '#',
-    message: 'Писмото беше прието успешно.',
-  };
 }

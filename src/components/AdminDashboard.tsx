@@ -56,6 +56,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [codeInput, setCodeInput] = useState('test');
+  const [codeNotice, setCodeNotice] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeBusy, setCodeBusy] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,6 +121,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
       setFetchError(err.message || 'Грешка при извличане на данните');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const updateCode = async (path: string, body: Record<string, unknown>, adminToken: string) => {
+    setCodeBusy(true);
+    setCodeError(null);
+    setCodeNotice(null);
+    try {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Операцията не успя.');
+      }
+      setCodeNotice(
+        `Код ${data.code}: остават ${data.remaining} проби (използвани ${data.used} от ${data.totalAllowed}).`
+      );
+    } catch (err: any) {
+      setCodeError(err.message || 'Грешка при промяна на кода.');
+    } finally {
+      setCodeBusy(false);
     }
   };
 
@@ -270,6 +301,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        <section className="bg-white border border-neutral-200 rounded-xl p-4 sm:p-5 shadow-xs space-y-3">
+          <div className="flex items-center gap-2">
+            <Tag className="w-4 h-4 text-emerald-700" />
+            <h2 className="text-sm font-semibold text-neutral-900">Проби по код</h2>
+          </div>
+          <p className="text-xs text-neutral-500 leading-relaxed">
+            Всеки код има 3 успешни генерации. Неуспешните не се броят. Кодът <span className="font-semibold text-neutral-700">test</span> е за проверка и също е ограничен до 3 — „Нулирай пробите“ го връща в началото.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              placeholder="Код, напр. test"
+              className="flex-1 px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-emerald-600"
+            />
+            <button
+              type="button"
+              disabled={codeBusy || !codeInput.trim()}
+              onClick={() => token && updateCode('/api/admin/codes/reset', { code: codeInput.trim() }, token)}
+              className="px-3 py-2 rounded-lg text-xs font-semibold bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-800 disabled:opacity-50 cursor-pointer"
+            >
+              Нулирай пробите
+            </button>
+            <button
+              type="button"
+              disabled={codeBusy || !codeInput.trim()}
+              onClick={() => token && updateCode('/api/admin/codes/add-credits', { code: codeInput.trim(), credits: 3 }, token)}
+              className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 cursor-pointer"
+            >
+              Добави 3 проби
+            </button>
+          </div>
+          {codeNotice && (
+            <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{codeNotice}</p>
+          )}
+          {codeError && (
+            <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{codeError}</p>
+          )}
+        </section>
+
         {/* Search & Statistics Bar */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white border border-neutral-200 rounded-xl p-3.5 shadow-xs">
           <div className="relative flex-1 max-w-md">

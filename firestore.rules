@@ -24,5 +24,20 @@ service cloud.firestore {
       allow read: if true;
       allow update, delete: if false;
     }
+
+    // Try counters are written only by the server (Firebase Admin SDK), which
+    // bypasses these rules. Browsers must not read or edit them.
+    match /generation_usage/{codeId} {
+      allow read, write: if false;
+    }
+    match /generation_daily/{dayId} {
+      allow read, write: if false;
+    }
+    match /generation_reservations/{reservationId} {
+      allow read, write: if false;
+    }
+    match /generation_task_index/{taskId} {
+      allow read, write: if false;
+    }
   }
 }

@@ -1,54 +1,25 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import {
+  getUsageBackend,
+  UsageStoreError,
+  type UsageBackend,
+} from './usage_store.js';
+import type { Balance, RecentTask } from './usage_logic.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-const dataDir = isVercel ? '/tmp/data' : path.resolve(__dirname, 'data');
-try {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-} catch (e) {
-  console.warn('[Access Control] Could not create dataDir:', e);
-}
-
-const dataFilePath = path.join(dataDir, 'access_data.json');
-const logFilePath = path.join(dataDir, 'generations.log');
-
-export interface CodeRecord {
-  code: string;
-  totalAllowed: number;
-  used: number;
-}
-
-export interface GenerationLogEntry {
-  code: string;
-  time: string;
-  status: 'success' | 'fail';
-  taskId: string;
-  details?: string;
-}
-
-interface StoredData {
-  codes: Record<string, CodeRecord>;
-  dailyUsage: {
-    date: string; // YYYY-MM-DD
-    count: number;
-  };
-  taskRegistrations: Record<
-    string,
-    {
-      code: string;
-      finalized: boolean;
-      createdAt: number;
-      taskData?: any;
-    }
-  >;
-  logs: GenerationLogEntry[];
-}
+/**
+ * Server-side invite limits.
+ *
+ * Each code may complete 3 generations in total. The counter lives in Firestore
+ * (or a local file during development) and is updated inside a transaction, so a
+ * refresh, a second browser, or two clicks at once cannot mint extra tries.
+ * Only a successful generation consumes a try. Failures release the hold.
+ *
+ * The easy code `test` is also limited to 3. Reset it from /admin
+ * ("Нулирай пробите") or:
+ *   curl -X POST "$APP_URL/api/admin/codes/reset" \
+ *     -H "content-type: application/json" \
+ *     -H "x-admin-password: $ADMIN_PASSWORD" \
+ *     -d '{"code":"test"}'
+ */
 
 const RAW_VALID_CODES: string[] = [
   'test',
@@ -81,98 +52,34 @@ const RAW_VALID_CODES: string[] = [
   'maximarket', 'amiamoda', 'veneraplus', 'oblechise', 'soonmama', 'dawnm',
   'borianasport', 'freelinebg', 'klin', 'karmaoriginal', 'womenspower',
   'twiggyshop', 'popov', 'candybaby', 'ksport', 'monipetrov', 'meriboo',
-  'maxiladystyle', 'imane', 'efrea', 'redics', 'bstyle'
+  'maxiladystyle', 'imane', 'efrea', 'redics', 'bstyle',
 ];
 
-const DEFAULT_CODES: Record<string, CodeRecord> = RAW_VALID_CODES.reduce((acc, code) => {
-  acc[code] = { code, totalAllowed: 3, used: 0 };
-  return acc;
-}, {} as Record<string, CodeRecord>);
+const KNOWN_CODES = new Set(RAW_VALID_CODES.map((code) => code.toLowerCase()));
 
-const GLOBAL_DAILY_CAP = 300;
+export const INVALID_CODE_MESSAGE = 'Тази проба е само с покана. Пишете ни на info@martitony.com';
+export const NO_TRIES_MESSAGE = 'Пробите свършиха – пишете ни на info@martitony.com за още';
+export const DAILY_CAP_MESSAGE =
+  'Дневният лимит за генериране в системата е достигнат. Моля, опитайте отново утре.';
 
-function getTodayString(): string {
-  return new Date().toISOString().slice(0, 10);
+export interface CodeRecord {
+  code: string;
+  totalAllowed: number;
+  used: number;
 }
 
-function loadData(): StoredData {
-  try {
-    if (fs.existsSync(dataFilePath)) {
-      const raw = fs.readFileSync(dataFilePath, 'utf-8');
-      const parsed = JSON.parse(raw);
-
-      // Keep valid codes from DEFAULT_CODES, but preserve existing custom totalAllowed and used!
-      const updatedCodes: Record<string, CodeRecord> = {};
-      for (const [codeKey, defaultObj] of Object.entries(DEFAULT_CODES)) {
-        if (parsed.codes && parsed.codes[codeKey]) {
-          updatedCodes[codeKey] = {
-            code: codeKey,
-            totalAllowed:
-              typeof parsed.codes[codeKey].totalAllowed === 'number'
-                ? parsed.codes[codeKey].totalAllowed
-                : defaultObj.totalAllowed,
-            used: typeof parsed.codes[codeKey].used === 'number' ? parsed.codes[codeKey].used : 0,
-          };
-        } else {
-          updatedCodes[codeKey] = { ...defaultObj };
-        }
-      }
-
-      // Preserve any dynamically added codes from parsed.codes as well
-      if (parsed.codes) {
-        for (const [codeKey, record] of Object.entries(parsed.codes as Record<string, CodeRecord>)) {
-          if (!updatedCodes[codeKey] && record && typeof record.totalAllowed === 'number') {
-            updatedCodes[codeKey] = {
-              code: codeKey,
-              totalAllowed: record.totalAllowed,
-              used: typeof record.used === 'number' ? record.used : 0,
-            };
-          }
-        }
-      }
-
-      parsed.codes = updatedCodes;
-
-      if (!parsed.dailyUsage || typeof parsed.dailyUsage.count !== 'number') {
-        parsed.dailyUsage = { date: getTodayString(), count: 0 };
-      }
-      if (!parsed.taskRegistrations) parsed.taskRegistrations = {};
-      if (!Array.isArray(parsed.logs)) parsed.logs = [];
-
-      saveData(parsed);
-      return parsed;
-    }
-  } catch (err) {
-    console.error('[Access Control] Failed to read data file, initializing fresh:', err);
-  }
-
-  const initial: StoredData = {
-    codes: { ...DEFAULT_CODES },
-    dailyUsage: { date: getTodayString(), count: 0 },
-    taskRegistrations: {},
-    logs: [],
-  };
-  saveData(initial);
-  return initial;
+export interface GenerationLogEntry {
+  code: string;
+  time: string;
+  status: 'success' | 'fail';
+  taskId: string;
+  details?: string;
 }
 
-function saveData(data: StoredData): void {
-  try {
-    fs.writeFileSync(dataFilePath, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('[Access Control] Failed to save data file:', err);
-  }
-}
+const memoryLogs: GenerationLogEntry[] = [];
 
-function appendToLogFile(entry: GenerationLogEntry): void {
-  try {
-    const line = `[${entry.time}] CODE: ${entry.code} | STATUS: ${entry.status.toUpperCase()} | TASK: ${entry.taskId}${
-      entry.details ? ` | DETAILS: ${entry.details}` : ''
-    }\n`;
-    fs.appendFileSync(logFilePath, line, 'utf-8');
-  } catch (err) {
-    console.error('[Access Control] Failed to append to log file:', err);
-  }
+function backend(): UsageBackend {
+  return getUsageBackend();
 }
 
 export function sanitizeCode(code?: string | null): string {
@@ -180,315 +87,289 @@ export function sanitizeCode(code?: string | null): string {
   return code.trim().toLowerCase();
 }
 
-/**
- * Checks an access code's current validity and remaining allowance.
- */
-export function checkAccessCode(rawCode?: string | null): {
-  valid: boolean;
-  code: string;
+export function isKnownAccessCode(code: string): boolean {
+  return KNOWN_CODES.has(sanitizeCode(code));
+}
+
+function toPublicStatus(balance: Balance) {
+  return {
+    valid: balance.valid,
+    code: balance.code,
+    remaining: balance.remaining,
+    totalAllowed: balance.totalAllowed,
+    used: balance.used,
+    dailyRemaining: balance.dailyRemaining,
+    dailyLimitReached: balance.dailyLimitReached,
+  };
+}
+
+export async function checkAccessCode(rawCode?: string | null) {
+  const code = sanitizeCode(rawCode);
+  if (!code) {
+    return {
+      valid: false,
+      code: '',
+      remaining: 0,
+      totalAllowed: 0,
+      used: 0,
+      dailyRemaining: 0,
+      dailyLimitReached: false,
+    };
+  }
+  const balance = await backend().check(code, isKnownAccessCode(code));
+  return toPublicStatus(balance);
+}
+
+export interface ReservationDecision {
+  allowed: boolean;
+  reason?: string;
+  statusCode: number;
+  errorCode: string;
   remaining: number;
   totalAllowed: number;
   used: number;
   dailyRemaining: number;
   dailyLimitReached: boolean;
-} {
+  reservationId?: string;
+}
+
+/**
+ * Atomically holds one try. Call releaseReservation if the upstream request fails,
+ * or commit via finalizeTaskResult only after the image succeeds.
+ */
+export async function reserveGeneration(rawCode?: string | null): Promise<ReservationDecision> {
   const code = sanitizeCode(rawCode);
-  const data = loadData();
-
-  // Reset daily count if date rolled over
-  const today = getTodayString();
-  if (data.dailyUsage.date !== today) {
-    data.dailyUsage = { date: today, count: 0 };
-    saveData(data);
-  }
-
-  const dailyRemaining = Math.max(0, GLOBAL_DAILY_CAP - data.dailyUsage.count);
-  const dailyLimitReached = data.dailyUsage.count >= GLOBAL_DAILY_CAP;
-
-  if (!code || !data.codes[code]) {
+  if (!code) {
     return {
-      valid: false,
-      code,
+      allowed: false,
+      reason: INVALID_CODE_MESSAGE,
+      statusCode: 403,
+      errorCode: 'ACCESS_DENIED',
       remaining: 0,
       totalAllowed: 0,
       used: 0,
-      dailyRemaining,
-      dailyLimitReached,
+      dailyRemaining: 0,
+      dailyLimitReached: false,
     };
   }
 
-  const record = data.codes[code];
-  const remaining = Math.max(0, record.totalAllowed - record.used);
-
-  return {
-    valid: true,
-    code,
-    remaining,
-    totalAllowed: record.totalAllowed,
-    used: record.used,
-    dailyRemaining,
-    dailyLimitReached,
+  const outcome = await backend().reserve(code, isKnownAccessCode(code));
+  const base = {
+    remaining: outcome.balance.remaining,
+    totalAllowed: outcome.balance.totalAllowed,
+    used: outcome.balance.used,
+    dailyRemaining: outcome.balance.dailyRemaining,
+    dailyLimitReached: outcome.balance.dailyLimitReached,
   };
-}
 
-/**
- * Validates if a code is eligible to trigger a new generation task.
- */
-export function canStartGeneration(rawCode?: string | null): {
-  allowed: boolean;
-  reason?: string;
-  statusCode: number;
-  remaining: number;
-} {
-  const check = checkAccessCode(rawCode);
-
-  if (!check.valid) {
+  if (!outcome.ok) {
+    if (outcome.reason === 'daily') {
+      console.warn(`[Access] Daily cap reached while starting code "${code}"`);
+      return {
+        allowed: false,
+        reason: DAILY_CAP_MESSAGE,
+        statusCode: 429,
+        errorCode: 'DAILY_CAP_REACHED',
+        ...base,
+      };
+    }
+    if (outcome.reason === 'no_tries') {
+      console.warn(`[Access] Code "${code}" has no tries left (used ${outcome.balance.used})`);
+      return {
+        allowed: false,
+        reason: NO_TRIES_MESSAGE,
+        statusCode: 403,
+        errorCode: 'NO_TRIES',
+        ...base,
+      };
+    }
+    console.warn(`[Access] Rejected unknown code "${code}"`);
     return {
       allowed: false,
-      reason: 'Тази проба е само с покана. Пишете ни на info@martitony.com',
+      reason: INVALID_CODE_MESSAGE,
       statusCode: 403,
+      errorCode: 'ACCESS_DENIED',
       remaining: 0,
+      totalAllowed: 0,
+      used: 0,
+      dailyRemaining: outcome.balance.dailyRemaining,
+      dailyLimitReached: outcome.balance.dailyLimitReached,
     };
   }
 
-  if (check.dailyLimitReached) {
-    return {
-      allowed: false,
-      reason: 'Дневният лимит за генериране в системата е достигнат. Моля, опитайте отново утре.',
-      statusCode: 429,
-      remaining: check.remaining,
-    };
-  }
-
-  if (check.remaining <= 0) {
-    return {
-      allowed: false,
-      reason: 'Пробите свършиха – пишете ни на info@martitony.com за още',
-      statusCode: 403,
-      remaining: 0,
-    };
-  }
-
+  console.log(
+    `[Access] Reserved try for "${code}" (${outcome.reservationId}). Remaining after hold: ${outcome.balance.remaining}. Daily slots left: ${outcome.balance.dailyRemaining}`
+  );
   return {
     allowed: true,
     statusCode: 200,
-    remaining: check.remaining,
+    errorCode: 'OK',
+    reservationId: outcome.reservationId,
+    ...base,
   };
 }
 
-/**
- * Associates an in-flight task with an access code.
- */
-export function registerPendingTask(taskId: string, rawCode: string, initialData?: any): void {
-  const code = sanitizeCode(rawCode);
-  const data = loadData();
-  data.taskRegistrations[taskId] = {
-    code,
-    finalized: false,
+export async function releaseReservation(reservationId: string, why = 'upstream failed'): Promise<Balance> {
+  const outcome = await backend().releaseReservation(reservationId);
+  console.log(
+    `[Access] Released hold ${reservationId} for "${outcome.code}" (${why}). Remaining: ${outcome.balance.remaining}. Counted: ${outcome.counted}`
+  );
+  return outcome.balance;
+}
+
+export async function registerPendingTask(
+  taskId: string,
+  rawCode: string,
+  initialData?: Record<string, any>,
+  reservationId?: string
+): Promise<void> {
+  if (!reservationId) {
+    console.warn(`[Access] Task ${taskId} was not tied to a reservation; it will not be counted`);
+    return;
+  }
+  const meta: RecentTask = {
+    id: taskId,
     createdAt: Date.now(),
-    taskData: initialData || {},
+    prompt: initialData?.prompt || '',
+    modelName: initialData?.modelName || 'Martitony Style Lab',
+    version: initialData?.version || '',
+    aspectRatio: initialData?.aspectRatio || initialData?.aspect_ratio || '',
+    resolution: initialData?.resolution || '',
+    status: 'processing',
+    outputUrls: [],
   };
-  saveData(data);
+  await backend().attach(reservationId, taskId, meta);
+  console.log(`[Access] Task ${taskId} attached to ${reservationId} for code "${sanitizeCode(rawCode)}"`);
 }
 
-/**
- * Saves successful output and details to a registered task
- */
-export function saveTaskSuccess(taskId: string, details: any): void {
-  const data = loadData();
-  if (data.taskRegistrations[taskId]) {
-    data.taskRegistrations[taskId].taskData = {
-      ...(data.taskRegistrations[taskId].taskData || {}),
-      ...details,
-      status: 'succeeded',
-    };
-    saveData(data);
-  }
-}
-
-/**
- * Returns all succeeded tasks strictly belonging to an access code
- */
-export function getTasksForCode(rawCode: string): any[] {
-  const code = sanitizeCode(rawCode);
-  if (!code) return [];
-  const data = loadData();
-  const list: any[] = [];
-  for (const [taskId, reg] of Object.entries(data.taskRegistrations)) {
-    if (reg.code === code && reg.taskData && Array.isArray(reg.taskData.outputUrls) && reg.taskData.outputUrls.length > 0) {
-      list.push({
-        id: taskId,
-        ...reg.taskData,
-        createdAt: reg.createdAt,
-      });
-    }
-  }
-  // Sort newest first
-  list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  return list;
-}
-
-/**
- * Verifies whether a taskId belongs to the given access code
- */
-export function isTaskOwnedByCode(taskId: string, rawCode: string): boolean {
-  const code = sanitizeCode(rawCode);
-  if (!code) return false;
-  const data = loadData();
-  const reg = data.taskRegistrations[taskId];
-  if (!reg) return true; // not registered locally
-  return reg.code === code;
-}
-
-/**
- * Finalizes task result. Decrements remaining counter ONLY on success.
- */
-export function finalizeTaskResult(
+export async function finalizeTaskResult(
   taskId: string,
   isSuccess: boolean,
-  details?: string
-): { decremented: boolean; remaining: number; code: string } {
-  const data = loadData();
-  const registration = data.taskRegistrations[taskId];
+  details?: string,
+  taskPatch?: Partial<RecentTask>
+): Promise<{ decremented: boolean; remaining: number; code: string; dailyRemaining: number; dailyLimitReached: boolean }> {
+  const outcome = isSuccess
+    ? await backend().commitTask(taskId, {
+        ...taskPatch,
+        status: 'succeeded',
+        completedAt: taskPatch?.completedAt || Date.now(),
+      })
+    : await backend().releaseTask(taskId);
 
-  if (!registration) {
-    return { decremented: false, remaining: 0, code: '' };
-  }
-
-  const { code } = registration;
   const time = new Date().toISOString();
+  const entry: GenerationLogEntry = {
+    code: outcome.code,
+    time,
+    status: isSuccess ? 'success' : 'fail',
+    taskId,
+    details: details || (isSuccess ? 'Successful generation' : 'Generation failed'),
+  };
+  memoryLogs.push(entry);
+  if (memoryLogs.length > 200) memoryLogs.shift();
 
-  // If already finalized, do not decrement again
-  if (registration.finalized) {
-    const record = data.codes[code];
-    return {
-      decremented: false,
-      remaining: record ? Math.max(0, record.totalAllowed - record.used) : 0,
-      code,
-    };
-  }
-
-  registration.finalized = true;
-
-  let decremented = false;
-  let remaining = 0;
-
-  if (isSuccess) {
-    // Check daily date rollover
-    const today = getTodayString();
-    if (data.dailyUsage.date !== today) {
-      data.dailyUsage = { date: today, count: 0 };
-    }
-    data.dailyUsage.count += 1;
-
-    // Decrement remaining by incrementing used
-    if (data.codes[code]) {
-      data.codes[code].used += 1;
-      remaining = Math.max(0, data.codes[code].totalAllowed - data.codes[code].used);
-      decremented = true;
-    }
-
-    const logEntry: GenerationLogEntry = {
-      code,
-      time,
-      status: 'success',
-      taskId,
-      details: details || `Successful generation (Remaining: ${remaining})`,
-    };
-    data.logs.push(logEntry);
-    appendToLogFile(logEntry);
-    console.log(`[Access Control SUCCESS] Code: "${code}" | Task: ${taskId} | Remaining: ${remaining} | Daily total: ${data.dailyUsage.count}/300`);
+  if (isSuccess && outcome.counted) {
+    console.log(
+      `[Access SUCCESS] Code "${outcome.code}" task ${taskId}. Remaining: ${outcome.balance.remaining}. Used: ${outcome.balance.used}/${outcome.balance.totalAllowed}. Daily remaining: ${outcome.balance.dailyRemaining}`
+    );
+  } else if (!isSuccess) {
+    console.log(
+      `[Access FAIL] Code "${outcome.code}" task ${taskId}. Try was not consumed. Remaining: ${outcome.balance.remaining}. ${details || ''}`
+    );
   } else {
-    // Error/failed: Do NOT decrement counter
-    const record = data.codes[code];
-    remaining = record ? Math.max(0, record.totalAllowed - record.used) : 0;
-
-    const logEntry: GenerationLogEntry = {
-      code,
-      time,
-      status: 'fail',
-      taskId,
-      details: details || 'Generation failed (Counter preserved)',
-    };
-    data.logs.push(logEntry);
-    appendToLogFile(logEntry);
-    console.log(`[Access Control FAIL] Code: "${code}" | Task: ${taskId} | No decrement | Remaining: ${remaining}`);
+    console.log(`[Access] Task ${taskId} already finalized. Remaining: ${outcome.balance.remaining}`);
   }
 
-  saveData(data);
-
-  return { decremented, remaining, code };
+  return {
+    decremented: outcome.counted,
+    remaining: outcome.balance.remaining,
+    code: outcome.code,
+    dailyRemaining: outcome.balance.dailyRemaining,
+    dailyLimitReached: outcome.balance.dailyLimitReached,
+  };
 }
 
-/**
- * Returns latest logs for inspection.
- */
+export async function saveTaskSuccess(taskId: string, details: any): Promise<void> {
+  // Counting happens in finalizeTaskResult. This refreshes stored gallery fields
+  // when the success payload arrives in a second step (output URLs).
+  if (!details) return;
+  await backend().commitTask(taskId, {
+    outputUrls: Array.isArray(details.outputUrls) ? details.outputUrls : [],
+    predictTime: details.predictTime,
+    totalTime: details.totalTime,
+    completedAt: details.completedAt || Date.now(),
+    status: 'succeeded',
+  });
+}
+
+export async function getTasksForCode(rawCode: string): Promise<any[]> {
+  const code = sanitizeCode(rawCode);
+  if (!code) return [];
+  const tasks = await backend().tasks(code);
+  return tasks.map((task) => ({
+    id: task.id,
+    prompt: task.prompt || '',
+    modelName: task.modelName || 'Martitony Style Lab Lookbook Engine',
+    version: task.version || '',
+    aspectRatio: task.aspectRatio || '3:4',
+    resolution: task.resolution || '2k',
+    outputUrls: task.outputUrls || [],
+    referenceImages: [],
+    status: task.status || 'succeeded',
+    createdAt: task.createdAt,
+    completedAt: task.completedAt,
+    predictTime: task.predictTime,
+    totalTime: task.totalTime,
+  }));
+}
+
+export async function isTaskOwnedByCode(taskId: string, rawCode: string): Promise<boolean> {
+  const code = sanitizeCode(rawCode);
+  if (!code) return false;
+  const owner = await backend().ownerOf(taskId);
+  if (!owner) return true;
+  return owner === code;
+}
+
 export function getGenerationLogs(limit = 100): GenerationLogEntry[] {
-  const data = loadData();
-  return (data.logs || []).slice(-limit).reverse();
+  return memoryLogs.slice(-limit).reverse();
 }
 
-/**
- * Adds credits (allowed generations) to a specific access code.
- */
-export function addCreditsToCode(rawCode: string, additionalCredits: number = 3): {
-  code: string;
-  totalAllowed: number;
-  used: number;
-  remaining: number;
-} {
+export async function addCreditsToCode(rawCode: string, additionalCredits: number = 3) {
   const code = sanitizeCode(rawCode);
-  const data = loadData();
-  const current = data.codes[code];
-  const used = current ? (typeof current.used === 'number' ? current.used : 0) : 0;
-  const currentTotal = current ? (typeof current.totalAllowed === 'number' ? current.totalAllowed : 0) : 0;
-
-  const currentRemaining = Math.max(0, currentTotal - used);
-  const newTotalAllowed = currentRemaining === 0 ? used + additionalCredits : currentTotal + additionalCredits;
-
-  data.codes[code] = {
-    code,
-    totalAllowed: newTotalAllowed,
-    used,
-  };
-
-  saveData(data);
-  console.log(`[Access Control] Added ${additionalCredits} credits to code "${code}". New totalAllowed: ${newTotalAllowed}, used: ${used}, remaining: ${newTotalAllowed - used}`);
-
+  if (!code) {
+    throw new UsageStoreError('Missing access code');
+  }
+  const balance = await backend().addCredits(code, additionalCredits);
+  console.log(
+    `[Access] Added ${additionalCredits} credits to "${code}". Remaining: ${balance.remaining} (used ${balance.used} / allowed ${balance.totalAllowed})`
+  );
   return {
     code,
-    totalAllowed: newTotalAllowed,
-    used,
-    remaining: Math.max(0, newTotalAllowed - used),
+    totalAllowed: balance.totalAllowed,
+    used: balance.used,
+    remaining: balance.remaining,
   };
 }
 
-/**
- * Sets explicit allowed generations for a specific access code.
- */
-export function setCreditsForCode(rawCode: string, totalAllowed: number): {
-  code: string;
-  totalAllowed: number;
-  used: number;
-  remaining: number;
-} {
+export async function resetCodeUsage(rawCode: string) {
   const code = sanitizeCode(rawCode);
-  const data = loadData();
-  const current = data.codes[code];
-  const used = current ? (typeof current.used === 'number' ? current.used : 0) : 0;
-
-  data.codes[code] = {
-    code,
-    totalAllowed,
-    used,
-  };
-
-  saveData(data);
+  if (!code) {
+    throw new UsageStoreError('Missing access code');
+  }
+  if (!isKnownAccessCode(code)) {
+    const existing = await backend().check(code, false);
+    if (!existing.valid) {
+      throw new UsageStoreError('Unknown access code');
+    }
+  }
+  const balance = await backend().reset(code);
+  console.log(`[Access] Reset code "${code}". Remaining: ${balance.remaining}`);
   return {
     code,
-    totalAllowed,
-    used,
-    remaining: Math.max(0, totalAllowed - used),
+    totalAllowed: balance.totalAllowed,
+    used: balance.used,
+    remaining: balance.remaining,
   };
 }
 
+export { UsageStoreError };

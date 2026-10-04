@@ -45,7 +45,7 @@ export default async function handler(req: any, res: any) {
     try {
       const formData = new FormData();
       const mime = extension === 'png' ? 'image/png' : 'image/jpeg';
-      const blob = new Blob([buffer], { type: mime });
+      const blob = new Blob([new Uint8Array(buffer)], { type: mime });
       formData.append('source', blob, filename);
       formData.append('key', '6d207e02198a847aa98d0a2a901485a5');
       formData.append('format', 'json');

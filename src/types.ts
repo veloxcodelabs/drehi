@@ -14,6 +14,9 @@ export interface TaskApiResult {
   completed_at?: number | null;
   isSimulated?: boolean;
   remaining?: number;
+  dailyRemaining?: number;
+  dailyLimitReached?: boolean;
+  failureCode?: string;
 }
 
 export interface AccessCodeStatus {

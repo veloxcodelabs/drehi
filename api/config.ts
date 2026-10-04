@@ -1,7 +1,13 @@
 export default function handler(_req: any, res: any) {
+  const token = (process.env.VMODEL_API_TOKEN || '')
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/^Bearer\s+/i, '')
+    .trim();
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-store');
   return res.status(200).json({
-    hasServerToken: true,
+    hasServerToken: Boolean(token),
     defaultVersion: 'cce611c44553ba5f061813d75a1e5f93d8c901047528da275f667ebe7d784565',
     models: [
       {

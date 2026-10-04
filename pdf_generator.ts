@@ -14,6 +14,25 @@ export interface LetterParticipantData {
   lastImageUrl?: string;
 }
 
+/**
+ * Beneficiary named on the letter of intent. Change this in one place.
+ * No personal ID numbers (no ЕГН, no ID card numbers).
+ */
+export const BENEFICIARY_COMPANY = {
+  nameBg: '„Здравец ХМ“ ЕООД',
+  nameEn: 'Zdravets NH EOOD',
+  uic: '206412964',
+  addressBg: 'гр. София 1505, ул. „Царичина“ № 11',
+  addressEn: '11 Tsarichina St., 1505 Sofia, Bulgaria',
+  managerBg: 'Здравко Лесичков',
+  managerEn: 'Zdravko Lesichkov',
+} as const;
+
+const BENEFICIARY_NAME_BG = `${BENEFICIARY_COMPANY.nameBg}, ЕИК ${BENEFICIARY_COMPANY.uic}`;
+const BENEFICIARY_NAME_EN = `${BENEFICIARY_COMPANY.nameEn}, UIC ${BENEFICIARY_COMPANY.uic}`;
+const BENEFICIARY_ID_BG = `${BENEFICIARY_NAME_BG}, седалище и адрес на управление: ${BENEFICIARY_COMPANY.addressBg}, представлявано от управителя ${BENEFICIARY_COMPANY.managerBg}`;
+const BENEFICIARY_ID_EN = `${BENEFICIARY_NAME_EN}, registered address: ${BENEFICIARY_COMPANY.addressEn}, represented by its manager ${BENEFICIARY_COMPANY.managerEn}`;
+
 const NEED_TRANSLATIONS: Record<string, string> = {
   'Клиентите не могат да си представят как дрехата ще им стои':
     'Shoppers struggle to visualize how garments look on their body',
@@ -62,7 +81,7 @@ export async function generateSupportLetterPdf(
         bufferPages: true,
         info: {
           Title: `Letter of Intent / Support - ${refNumber}`,
-          Author: 'Martitony Style Lab (Space Code EOOD)',
+          Author: `Martitony Style Lab (${BENEFICIARY_NAME_EN})`,
           Subject: 'AI Virtual Try-On Pilot Program Letter of Intent',
           Keywords: 'AI, Fashion Tech, Letter of Intent, Virtual Try-on, EIT Culture & Creativity',
         },
@@ -106,29 +125,40 @@ export async function generateSupportLetterPdf(
 
       // Metadata Parties Box
       const metaY1 = doc.y;
-      doc.rect(36, metaY1, contentWidth, 54).fillAndStroke('#F8FAFC', '#E2E8F0');
+      const partyTextWidth = contentWidth - 16;
+      const beneficiaryBg = `${BENEFICIARY_ID_BG} – Martitony Style Lab  ·  Имейл: info@martitony.com`;
+      doc.font('LiberationSans').fontSize(7.5);
+      const beneficiaryBgHeight = doc.heightOfString(beneficiaryBg, { width: partyTextWidth });
+      const metaBoxHeightBg = 46 + beneficiaryBgHeight + 6;
+      doc.rect(36, metaY1, contentWidth, metaBoxHeightBg).fillAndStroke('#F8FAFC', '#E2E8F0');
       doc.fillColor('#0F172A');
 
-      doc.font('LiberationSans-Bold').fontSize(7.5).text('ОТ (Партньорски електронен магазин):', 44, metaY1 + 5);
+      doc.font('LiberationSans-Bold').fontSize(7.5).text('ОТ (Партньорски електронен магазин):', 44, metaY1 + 5, {
+        width: partyTextWidth,
+        lineBreak: false,
+      });
       doc.font('LiberationSans').fontSize(7.5).text(
         `${data.companyName} (ЕИК: ${data.uic})  ·  Уебсайт: ${data.website}`,
         44,
-        metaY1 + 15
+        metaY1 + 15,
+        { width: partyTextWidth, lineBreak: false }
       );
       doc.text(
         `Лице за контакт: ${data.contactName}  ·  Длъжност: ${data.role}  ·  Имейл: ${data.email}`,
         44,
-        metaY1 + 26
+        metaY1 + 26,
+        { width: partyTextWidth, lineBreak: false }
       );
 
-      doc.font('LiberationSans-Bold').fontSize(7.5).text('ДО (Разработчик на решението):', 44, metaY1 + 36);
-      doc.font('LiberationSans').fontSize(7.5).text(
-        '„Спейс Коуд“ ЕООД / Space Code EOOD – Martitony Style Lab  ·  Имейл: info@martitony.com',
-        44,
-        metaY1 + 45
-      );
+      doc.font('LiberationSans-Bold').fontSize(7.5).text('ДО (Разработчик на решението):', 44, metaY1 + 36, {
+        width: partyTextWidth,
+        lineBreak: false,
+      });
+      doc.font('LiberationSans').fontSize(7.5).text(beneficiaryBg, 44, metaY1 + 46, {
+        width: partyTextWidth,
+      });
 
-      doc.y = metaY1 + 60;
+      doc.y = metaY1 + metaBoxHeightBg + 6;
 
       let secBg = 1;
 
@@ -249,29 +279,39 @@ export async function generateSupportLetterPdf(
 
       // Metadata Parties Box EN
       const metaY2 = doc.y;
-      doc.rect(36, metaY2, contentWidth, 54).fillAndStroke('#F8FAFC', '#E2E8F0');
+      const beneficiaryEn = `${BENEFICIARY_ID_EN} – Martitony Style Lab  ·  Email: info@martitony.com`;
+      doc.font('LiberationSans').fontSize(7.5);
+      const beneficiaryEnHeight = doc.heightOfString(beneficiaryEn, { width: partyTextWidth });
+      const metaBoxHeightEn = 46 + beneficiaryEnHeight + 6;
+      doc.rect(36, metaY2, contentWidth, metaBoxHeightEn).fillAndStroke('#F8FAFC', '#E2E8F0');
       doc.fillColor('#0F172A');
 
-      doc.font('LiberationSans-Bold').fontSize(7.5).text('FROM (Partner E-commerce Shop):', 44, metaY2 + 5);
+      doc.font('LiberationSans-Bold').fontSize(7.5).text('FROM (Partner E-commerce Shop):', 44, metaY2 + 5, {
+        width: partyTextWidth,
+        lineBreak: false,
+      });
       doc.font('LiberationSans').fontSize(7.5).text(
         `${data.companyName} (UIC / Tax ID: ${data.uic})  ·  Website: ${data.website}`,
         44,
-        metaY2 + 15
+        metaY2 + 15,
+        { width: partyTextWidth, lineBreak: false }
       );
       doc.text(
         `Contact Person: ${data.contactName}  ·  Position: ${data.role}  ·  Email: ${data.email}`,
         44,
-        metaY2 + 26
+        metaY2 + 26,
+        { width: partyTextWidth, lineBreak: false }
       );
 
-      doc.font('LiberationSans-Bold').fontSize(7.5).text('TO (Solution Provider):', 44, metaY2 + 36);
-      doc.font('LiberationSans').fontSize(7.5).text(
-        'Space Code EOOD – Martitony Style Lab  ·  Email: info@martitony.com',
-        44,
-        metaY2 + 45
-      );
+      doc.font('LiberationSans-Bold').fontSize(7.5).text('TO (Solution Provider):', 44, metaY2 + 36, {
+        width: partyTextWidth,
+        lineBreak: false,
+      });
+      doc.font('LiberationSans').fontSize(7.5).text(beneficiaryEn, 44, metaY2 + 46, {
+        width: partyTextWidth,
+      });
 
-      doc.y = metaY2 + 60;
+      doc.y = metaY2 + metaBoxHeightEn + 6;
 
       let secEn = 1;
 

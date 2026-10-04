@@ -6,7 +6,8 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import {
   checkAccessCode,
-  canStartGeneration,
+  reserveGeneration,
+  releaseReservation,
   registerPendingTask,
   finalizeTaskResult,
   getGenerationLogs,
@@ -15,8 +16,17 @@ import {
   getTasksForCode,
   isTaskOwnedByCode,
   addCreditsToCode,
+  resetCodeUsage,
+  UsageStoreError,
 } from './access_control.js';
 import { processSupportLetter, getSubmissionPdf, getAllSubmissions } from './support_letter_service.js';
+import {
+  classifyUpstreamFailure,
+  logUpstreamFailure,
+  FAILURE_PUBLIC_MESSAGE,
+  STORAGE_PUBLIC_MESSAGE,
+  UNCONFIGURED_PUBLIC_MESSAGE,
+} from './generation_errors.js';
 
 dotenv.config();
 
@@ -26,25 +36,26 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-export const DEFAULT_SERVER_TOKEN = 'MtKCZUshKHMm5_vaI7E5NyQI__k61vqV7IT0nF3zeAbaW5KJv5aDVr2pN80D-YBz2HJT8lK3oZTDlUcGuTVdjw==';
-
-// Helper to sanitize tokens (strips extra quotes or redundant "Bearer " prefixes)
-export function cleanToken(rawToken: string | undefined): string {
-  const candidate = (rawToken && rawToken.trim().length > 0)
-    ? rawToken
-    : (process.env.VMODEL_API_TOKEN && process.env.VMODEL_API_TOKEN.trim().length > 0)
-      ? process.env.VMODEL_API_TOKEN
-      : DEFAULT_SERVER_TOKEN;
-
-  return candidate
+/**
+ * Image-generation credential. Server environment only.
+ * Client-supplied tokens are ignored so the key is never required in the browser
+ * and cannot be overridden by a page.
+ */
+export function getServerToken(): string {
+  const raw = process.env.VMODEL_API_TOKEN || '';
+  return raw
     .trim()
     .replace(/^['"]|['"]$/g, '')
     .replace(/^Bearer\s+/i, '')
-    .trim() || DEFAULT_SERVER_TOKEN;
+    .trim();
 }
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 // Ensure uploads folder exists (use /tmp/uploads on Vercel to avoid EROFS)
 const isVercelEnv = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
@@ -90,11 +101,25 @@ app.get('/favicon.ico', (_req: Request, res: Response) => {
   res.status(204).end();
 });
 
-// Access code validation endpoint
-app.get('/api/auth-code', (req: Request, res: Response) => {
-  const code = (req.query.k as string) || (req.headers['x-access-code'] as string);
-  const result = checkAccessCode(code);
-  return res.json(result);
+// Access code validation endpoint. Remaining tries always come from the server store.
+app.get('/api/auth-code', async (req: Request, res: Response) => {
+  try {
+    const code = (req.query.k as string) || (req.headers['x-access-code'] as string);
+    const result = await checkAccessCode(code);
+    return res.json(result);
+  } catch (error) {
+    console.error('[Access] auth-code failed:', error);
+    return res.status(503).json({
+      valid: false,
+      code: '',
+      remaining: 0,
+      totalAllowed: 0,
+      used: 0,
+      dailyRemaining: 0,
+      dailyLimitReached: false,
+      message: STORAGE_PUBLIC_MESSAGE,
+    });
+  }
 });
 
 // Generation logs endpoint for administration
@@ -105,8 +130,8 @@ app.get('/api/generation-logs', (_req: Request, res: Response) => {
 
 // Check configuration
 app.get('/api/config', (_req: Request, res: Response) => {
-  const token = cleanToken(process.env.VMODEL_API_TOKEN);
-  const hasServerToken = Boolean(token && token.trim().length > 0);
+  const token = getServerToken();
+  const hasServerToken = Boolean(token);
   res.json({
     hasServerToken,
     defaultVersion: 'cce611c44553ba5f061813d75a1e5f93d8c901047528da275f667ebe7d784565',
@@ -189,8 +214,7 @@ app.post('/api/upload', async (req: Request, res: Response) => {
 app.get('/api/proxy-image', async (req: Request, res: Response) => {
   try {
     const targetUrl = req.query.url as string;
-    const clientToken = (req.query.token as string) || (req.headers['x-vmodel-token'] as string);
-    const token = cleanToken(clientToken || process.env.VMODEL_API_TOKEN);
+    const token = getServerToken();
 
     if (!targetUrl) {
       return res.status(400).send('Missing url parameter');
@@ -296,7 +320,7 @@ async function ensurePublicImageUrl(urlOrPath: string): Promise<string> {
       const fileBuffer = fs.readFileSync(filePath);
       const ext = path.extname(filePath).toLowerCase();
       const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
-      const blob = new Blob([fileBuffer], { type: mime });
+      const blob = new Blob([new Uint8Array(fileBuffer)], { type: mime });
       formData.append('source', blob, path.basename(filePath));
       formData.append('key', '6d207e02198a847aa98d0a2a901485a5');
       formData.append('format', 'json');
@@ -323,7 +347,7 @@ async function ensurePublicImageUrl(urlOrPath: string): Promise<string> {
       // Fallback: Catbox litterbox
       const fbFormData = new FormData();
       const fileBuffer = fs.readFileSync(filePath);
-      const blob = new Blob([fileBuffer], { type: 'image/jpeg' });
+      const blob = new Blob([new Uint8Array(fileBuffer)], { type: 'image/jpeg' });
       fbFormData.append('reqtype', 'fileupload');
       fbFormData.append('time', '24h');
       fbFormData.append('fileToUpload', blob, path.basename(filePath));
@@ -352,8 +376,7 @@ async function ensurePublicImageUrl(urlOrPath: string): Promise<string> {
 // Test connection endpoint to verify synthesis engine credentials
 app.post('/api/test-connection', async (req: Request, res: Response) => {
   try {
-    const rawToken = req.body.apiToken || (req.headers['x-vmodel-token'] as string) || process.env.VMODEL_API_TOKEN;
-    const token = cleanToken(rawToken);
+    const token = getServerToken();
 
     if (!token) {
       return res.status(400).json({
@@ -401,28 +424,32 @@ app.post('/api/test-connection', async (req: Request, res: Response) => {
 
 // Create task endpoint
 app.post('/api/tasks/create', async (req: Request, res: Response) => {
+  let reservationId: string | undefined;
   try {
-    const { version, input, apiToken, simulate, webhook_url } = req.body;
-    const rawToken = apiToken || (req.headers['x-vmodel-token'] as string) || process.env.VMODEL_API_TOKEN;
-    const token = cleanToken(rawToken);
+    const { version, input, simulate, webhook_url } = req.body;
+    const token = getServerToken();
 
-    // Strict access code enforcement
+    // Strict access code enforcement. Client tokens are ignored.
     const accessCode = sanitizeCode(
       (req.body.accessCode as string) ||
       (req.query.k as string) ||
       (req.headers['x-access-code'] as string)
     );
 
-    const accessCheck = canStartGeneration(accessCode);
-    if (!accessCheck.allowed) {
-      console.warn(`[Access Denied] Code: "${accessCode}" - ${accessCheck.reason}`);
+    const accessCheck = await reserveGeneration(accessCode);
+    if (!accessCheck.allowed || !accessCheck.reservationId) {
       return res.status(accessCheck.statusCode).json({
         error: accessCheck.reason,
         remaining: accessCheck.remaining,
-        code: accessCheck.statusCode === 429 ? 'DAILY_CAP_REACHED' : 'ACCESS_DENIED',
+        dailyRemaining: accessCheck.dailyRemaining,
+        dailyLimitReached: accessCheck.dailyLimitReached,
+        used: accessCheck.used,
+        totalAllowed: accessCheck.totalAllowed,
+        code: accessCheck.errorCode,
       });
     }
 
+    reservationId = accessCheck.reservationId;
     console.log(`[Task Create Request] Code: "${accessCode}", Version: ${version}, hasToken: ${Boolean(token)}, simulate: ${Boolean(simulate)}`);
 
     // Run simulation if user explicitly set simulate: true
@@ -450,13 +477,13 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
       };
 
       simulatedTasks.set(simulatedTaskId, newTask);
-      registerPendingTask(simulatedTaskId, accessCode, {
+      await registerPendingTask(simulatedTaskId, accessCode, {
         prompt: input?.prompt || 'Simulated Generation',
         modelName: 'GPT Image 2.5 (Simulated)',
         version,
         aspectRatio: input?.aspect_ratio || '1:1',
         resolution: input?.resolution || '2k',
-      });
+      }, reservationId);
 
       setTimeout(() => {
         const t = simulatedTasks.get(simulatedTaskId);
@@ -473,14 +500,12 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
           t.predict_time = 4.2;
           t.total_time = 6.0;
           t.output = [selectedOutput];
-          finalizeTaskResult(simulatedTaskId, true, 'Simulated generation completed');
-          saveTaskSuccess(simulatedTaskId, {
+          void finalizeTaskResult(simulatedTaskId, true, 'Simulated generation completed', {
             outputUrls: [selectedOutput],
-            status: 'succeeded',
             predictTime: 4.2,
             totalTime: 6.0,
             completedAt: Date.now(),
-          });
+          }).catch((err) => console.error('[Access] Simulated finalize failed', err));
         }
       }, 6000);
 
@@ -491,6 +516,8 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
           task_cost: 10,
           isSimulated: true,
           remaining: accessCheck.remaining,
+          dailyRemaining: accessCheck.dailyRemaining,
+          dailyLimitReached: accessCheck.dailyLimitReached,
         },
         message: {
           en: 'Task created successfully',
@@ -499,14 +526,24 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
     }
 
     if (!token) {
-      return res.status(500).json({
-        error: 'Server generation credentials are not configured.',
-        code: 500,
+      const released = await releaseReservation(reservationId, 'missing VMODEL_API_TOKEN');
+      console.error('[Generation] VMODEL_API_TOKEN is not set. Refusing to call the image API.');
+      return res.status(503).json({
+        error: UNCONFIGURED_PUBLIC_MESSAGE,
+        remaining: released.remaining,
+        dailyRemaining: released.dailyRemaining,
+        dailyLimitReached: released.dailyLimitReached,
+        code: 'NOT_CONFIGURED',
       });
     }
 
     if (!version) {
-      return res.status(400).json({ error: 'Model version ID is required' });
+      const released = await releaseReservation(reservationId, 'missing model version');
+      return res.status(400).json({
+        error: 'Model version ID is required',
+        remaining: released.remaining,
+        code: 'BAD_REQUEST',
+      });
     }
 
     // Process input images to ensure valid direct public HTTPS URLs with image MIME types
@@ -555,41 +592,66 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
     });
 
     const responseData = await vmodelResponse.json().catch(() => null);
-    console.log(`[Task Create Response] status ${vmodelResponse.status}`, responseData);
 
     if (!vmodelResponse.ok || (responseData && responseData.code && responseData.code !== 200)) {
-      const errMsg =
-        responseData?.message?.en ||
-        (typeof responseData?.message === 'string' ? responseData.message : null) ||
-        responseData?.error ||
-        `Service returned HTTP ${vmodelResponse.status}`;
-
-      return res.status(vmodelResponse.status || 400).json({
-        error: errMsg,
-        details: responseData,
-        code: responseData?.code || vmodelResponse.status,
+      const classified = classifyUpstreamFailure(vmodelResponse.status, responseData);
+      logUpstreamFailure(`create code=${accessCode}`, classified, responseData);
+      const released = await releaseReservation(reservationId, classified.kind);
+      return res.status(classified.httpStatus).json({
+        error: classified.publicMessage,
+        remaining: released.remaining,
+        dailyRemaining: released.dailyRemaining,
+        dailyLimitReached: released.dailyLimitReached,
+        used: released.used,
+        totalAllowed: released.totalAllowed,
+        code: classified.kind === 'quota' ? 'QUOTA_EXCEEDED' : 'GENERATION_FAILED',
       });
     }
 
     const createdTaskId = responseData?.result?.task_id;
-    if (createdTaskId) {
-      registerPendingTask(createdTaskId, accessCode, {
-        prompt: input?.prompt || '',
-        modelName: input?.modelName || 'GPT Image 2.5',
-        version,
-        aspectRatio: input?.aspect_ratio || '1:1',
-        resolution: input?.resolution || '2k',
+    if (!createdTaskId) {
+      const classified = classifyUpstreamFailure(vmodelResponse.status, responseData);
+      logUpstreamFailure(`create-missing-task code=${accessCode}`, classified, responseData);
+      const released = await releaseReservation(reservationId, 'missing task id');
+      return res.status(502).json({
+        error: FAILURE_PUBLIC_MESSAGE,
+        remaining: released.remaining,
+        code: 'GENERATION_FAILED',
       });
     }
 
+    await registerPendingTask(createdTaskId, accessCode, {
+      prompt: input?.prompt || '',
+      modelName: input?.modelName || 'GPT Image 2.5',
+      version,
+      aspectRatio: input?.aspect_ratio || '1:1',
+      resolution: input?.resolution || '2k',
+    }, reservationId);
+
     if (responseData?.result) {
       responseData.result.remaining = accessCheck.remaining;
+      responseData.result.dailyRemaining = accessCheck.dailyRemaining;
+      responseData.result.dailyLimitReached = accessCheck.dailyLimitReached;
     }
 
     return res.json(responseData);
   } catch (error: any) {
     console.error('Error creating task:', error);
-    return res.status(500).json({ error: error.message || 'Internal server error while creating task' });
+    let remaining: number | undefined;
+    if (reservationId) {
+      try {
+        const released = await releaseReservation(reservationId, 'create threw');
+        remaining = released.remaining;
+      } catch (releaseErr) {
+        console.error('[Access] Failed to release hold after create error', releaseErr);
+      }
+    }
+    const storage = error instanceof UsageStoreError;
+    return res.status(storage ? 503 : 500).json({
+      error: storage ? STORAGE_PUBLIC_MESSAGE : FAILURE_PUBLIC_MESSAGE,
+      remaining,
+      code: storage ? 'STORAGE_UNAVAILABLE' : 'GENERATION_FAILED',
+    });
   }
 });
 
@@ -597,12 +659,11 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
 app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
   try {
     const { taskId } = req.params;
-    const clientToken = (req.query.token as string) || (req.headers['x-vmodel-token'] as string);
-    const token = cleanToken(clientToken || process.env.VMODEL_API_TOKEN);
+    const token = getServerToken();
 
     // Verify task ownership if access code is supplied
     const callerCode = sanitizeCode((req.headers['x-access-code'] as string) || (req.query.code as string) || '');
-    if (callerCode && !isTaskOwnedByCode(taskId, callerCode)) {
+    if (callerCode && !(await isTaskOwnedByCode(taskId, callerCode))) {
       return res.status(403).json({ error: 'Достъпът е отказан: тази генерация принадлежи на друг код.' });
     }
 
@@ -612,17 +673,29 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
       if (!task) {
         return res.status(404).json({ error: 'Simulated task not found' });
       }
+      let remaining: number | undefined;
+      if (task.status === 'succeeded') {
+        const fin = await finalizeTaskResult(taskId, true, 'Simulated generation completed', {
+          outputUrls: task.output,
+        });
+        remaining = fin.remaining;
+      } else if (task.status === 'failed' || task.status === 'canceled') {
+        const fin = await finalizeTaskResult(taskId, false, task.error || 'Simulated task failed');
+        remaining = fin.remaining;
+      }
       return res.json({
         code: 200,
         result: {
           ...task,
+          ...(typeof remaining === 'number' ? { remaining } : {}),
         },
         message: {},
       });
     }
 
     if (!token) {
-      return res.status(500).json({ error: 'Server generation credentials not configured' });
+      console.error('[Generation] VMODEL_API_TOKEN is not set while polling a task.');
+      return res.status(503).json({ error: UNCONFIGURED_PUBLIC_MESSAGE, code: 'NOT_CONFIGURED' });
     }
 
     const vmodelResponse = await fetch(`https://api.vmodel.ai/api/tasks/v1/get/${taskId}`, {
@@ -634,19 +707,35 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
     const responseData = await vmodelResponse.json().catch(() => null);
 
     if (!vmodelResponse.ok || (responseData && responseData.code && responseData.code !== 200)) {
-      const errMsg = responseData?.message?.en || responseData?.message || responseData?.error || `Failed to fetch task (${vmodelResponse.status})`;
-      return res.status(vmodelResponse.status || 400).json({
-        error: errMsg,
-        details: responseData,
-        code: responseData?.code || vmodelResponse.status,
+      const classified = classifyUpstreamFailure(vmodelResponse.status, responseData);
+      logUpstreamFailure(`poll task=${taskId}`, classified, responseData);
+      // A transport/quota error while polling is not a finished image. Keep the hold
+      // so a later successful poll can still count, unless the upstream says the task
+      // itself no longer exists.
+      if (vmodelResponse.status === 404) {
+        const fin = await finalizeTaskResult(taskId, false, 'Task not found');
+        return res.status(404).json({
+          error: FAILURE_PUBLIC_MESSAGE,
+          remaining: fin.remaining,
+          code: 'GENERATION_FAILED',
+        });
+      }
+      return res.status(classified.httpStatus).json({
+        error: classified.publicMessage,
+        code: classified.kind === 'quota' ? 'QUOTA_EXCEEDED' : 'GENERATION_FAILED',
       });
     }
 
-    // Decrement counter ONLY on successful completion, preserve on error
+    // Count the try only after a successful image. Failures release the hold.
     const taskStatus = responseData?.result?.status;
     if (taskStatus === 'succeeded') {
-      const fin = finalizeTaskResult(taskId, true, 'Task completed successfully');
-      saveTaskSuccess(taskId, {
+      const fin = await finalizeTaskResult(taskId, true, 'Task completed successfully', {
+        outputUrls: responseData?.result?.output || [],
+        predictTime: responseData?.result?.predict_time,
+        totalTime: responseData?.result?.total_time,
+        completedAt: Date.now(),
+      });
+      await saveTaskSuccess(taskId, {
         outputUrls: responseData?.result?.output || [],
         predictTime: responseData?.result?.predict_time,
         totalTime: responseData?.result?.total_time,
@@ -655,29 +744,47 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
       });
       if (responseData?.result) {
         responseData.result.remaining = fin.remaining;
+        responseData.result.dailyRemaining = fin.dailyRemaining;
+        responseData.result.dailyLimitReached = fin.dailyLimitReached;
       }
     } else if (taskStatus === 'failed' || taskStatus === 'canceled') {
-      const fin = finalizeTaskResult(taskId, false, responseData?.result?.error || 'Task failed');
+      const rawError = responseData?.result?.error || responseData;
+      const classified = classifyUpstreamFailure(0, rawError);
+      logUpstreamFailure(`task-status ${taskStatus} task=${taskId}`, classified, rawError);
+      const fin = await finalizeTaskResult(taskId, false, classified.summary);
       if (responseData?.result) {
+        responseData.result.error = classified.publicMessage;
         responseData.result.remaining = fin.remaining;
+        responseData.result.dailyRemaining = fin.dailyRemaining;
+        responseData.result.dailyLimitReached = fin.dailyLimitReached;
+        responseData.result.failureCode = classified.kind === 'quota' ? 'QUOTA_EXCEEDED' : 'GENERATION_FAILED';
       }
     }
 
     return res.json(responseData);
   } catch (error: any) {
     console.error('Error getting task:', error);
-    return res.status(500).json({ error: error.message || 'Internal server error while fetching task' });
+    const storage = error instanceof UsageStoreError;
+    return res.status(storage ? 503 : 500).json({
+      error: storage ? STORAGE_PUBLIC_MESSAGE : FAILURE_PUBLIC_MESSAGE,
+      code: storage ? 'STORAGE_UNAVAILABLE' : 'GENERATION_FAILED',
+    });
   }
 });
 
 // User tasks endpoint - strictly isolated by access code
-app.get('/api/user-tasks', (req: Request, res: Response) => {
-  const code = sanitizeCode((req.headers['x-access-code'] as string) || (req.query.code as string) || '');
-  if (!code) {
-    return res.status(400).json({ error: 'Access code is required' });
+app.get('/api/user-tasks', async (req: Request, res: Response) => {
+  try {
+    const code = sanitizeCode((req.headers['x-access-code'] as string) || (req.query.code as string) || '');
+    if (!code) {
+      return res.status(400).json({ error: 'Access code is required' });
+    }
+    const tasks = await getTasksForCode(code);
+    return res.json({ success: true, tasks });
+  } catch (error) {
+    console.error('[Access] user-tasks failed:', error);
+    return res.status(503).json({ error: STORAGE_PUBLIC_MESSAGE });
   }
-  const tasks = getTasksForCode(code);
-  return res.json({ success: true, tasks });
 });
 
 // Submit Support Letter
@@ -840,7 +947,7 @@ app.get('/api/admin/submissions', async (req: Request, res: Response) => {
 });
 
 // POST /api/admin/codes/add-credits - Add credits to a code
-app.post('/api/admin/codes/add-credits', (req: Request, res: Response) => {
+app.post('/api/admin/codes/add-credits', async (req: Request, res: Response) => {
   if (!verifyAdmin(req)) {
     return res.status(401).json({ error: 'Неоторизиран достъп.' });
   }
@@ -850,8 +957,55 @@ app.post('/api/admin/codes/add-credits', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Моля, въведете валиден код.' });
   }
 
-  const result = addCreditsToCode(code, Number(credits) || 3);
-  return res.json({ success: true, ...result });
+  try {
+    const result = await addCreditsToCode(code, Number(credits) || 3);
+    return res.json({ success: true, ...result });
+  } catch (error: any) {
+    console.error('[Access] add-credits failed:', error);
+    return res.status(500).json({ error: error.message || 'Грешка при добавяне на проби.' });
+  }
+});
+
+// POST /api/admin/codes/reset - Return a code to its full allowance (used = 0).
+// The practice code "test" is reset the same way and is still capped at 3.
+app.post('/api/admin/codes/reset', async (req: Request, res: Response) => {
+  if (!verifyAdmin(req)) {
+    return res.status(401).json({ error: 'Неоторизиран достъп.' });
+  }
+
+  const { code } = req.body || {};
+  if (!code || typeof code !== 'string') {
+    return res.status(400).json({ error: 'Моля, въведете валиден код.' });
+  }
+
+  try {
+    const result = await resetCodeUsage(code);
+    return res.json({ success: true, ...result });
+  } catch (error: any) {
+    console.error('[Access] reset failed:', error);
+    const unknown = /unknown access code/i.test(String(error.message));
+    return res.status(unknown ? 404 : 500).json({
+      error: unknown ? 'Непознат код.' : 'Грешка при нулиране на кода.',
+    });
+  }
+});
+
+// GET /api/admin/codes/status?code=test
+app.get('/api/admin/codes/status', async (req: Request, res: Response) => {
+  if (!verifyAdmin(req)) {
+    return res.status(401).json({ error: 'Неоторизиран достъп.' });
+  }
+  const code = String(req.query.code || '');
+  if (!code.trim()) {
+    return res.status(400).json({ error: 'Моля, въведете код.' });
+  }
+  try {
+    const result = await checkAccessCode(code);
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('[Access] status failed:', error);
+    return res.status(503).json({ error: STORAGE_PUBLIC_MESSAGE });
+  }
 });
 
 
@@ -882,7 +1036,7 @@ async function startServer() {
   });
 }
 
-if (!process.env.VERCEL) {
+if (!process.env.VERCEL && process.env.DISABLE_SERVER_AUTOSTART !== '1') {
   startServer().catch((err) => {
     console.error('Failed to start server:', err);
     process.exit(1);
