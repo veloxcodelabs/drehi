@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { bundledFontPath } from './fonts/load.js';
 
 export interface LetterParticipantData {
   companyName: string;
@@ -87,13 +88,9 @@ export async function generateSupportLetterPdf(
         },
       });
 
-      const regularFont = '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf';
-      const boldFont = '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf';
-      const italicFont = '/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf';
-
-      doc.registerFont('LiberationSans', regularFont);
-      doc.registerFont('LiberationSans-Bold', boldFont);
-      doc.registerFont('LiberationSans-Italic', italicFont);
+      doc.registerFont('LiberationSans', bundledFontPath('regular'));
+      doc.registerFont('LiberationSans-Bold', bundledFontPath('bold'));
+      doc.registerFont('LiberationSans-Italic', bundledFontPath('italic'));
 
       const pageWidth = 595.28;
       const contentWidth = pageWidth - 72; // margins left 36 + right 36 = 72
