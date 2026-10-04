@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { IMAGE_TOO_LARGE_MESSAGE, IMAGE_UPLOAD_FAILED_MESSAGE, isPublicHttpUrl } from '../image_payload.js';
 
 export const config = {
   api: {
@@ -62,25 +63,23 @@ export default async function handler(req: any, res: any) {
       console.warn('CDN upload in api/upload.ts:', cdnErr);
     }
 
+    if (!isPublicHttpUrl(cdnUrl)) {
+      console.error('[Upload] Public image host did not return a URL. Refusing to echo image bytes.');
+      return res.status(502).json({ error: IMAGE_UPLOAD_FAILED_MESSAGE, code: 'UPLOAD_FAILED' });
+    }
+
     return res.status(200).json({
-      url: cdnUrl || dataUrl,
-      localUrl: cdnUrl || dataUrl,
-      dataUrl,
+      url: cdnUrl,
       filename,
       size: buffer.length,
-      mime: `image/${extension}`,
+      mime: `image/${extension === 'png' ? 'png' : 'jpeg'}`,
     });
   } catch (error: any) {
     console.error('Error in api/upload.ts:', error);
-    if (req.body?.dataUrl) {
-      return res.status(200).json({
-        url: req.body.dataUrl,
-        localUrl: req.body.dataUrl,
-        dataUrl: req.body.dataUrl,
-        filename: req.body?.filename || 'upload.png',
-        size: 0,
-      });
-    }
-    return res.status(400).json({ error: error.message || 'Upload failed' });
+    const tooBig = typeof req.body?.dataUrl === 'string' && req.body.dataUrl.length > 4_000_000;
+    return res.status(tooBig ? 413 : 400).json({
+      error: tooBig ? IMAGE_TOO_LARGE_MESSAGE : IMAGE_UPLOAD_FAILED_MESSAGE,
+      code: tooBig ? 'PAYLOAD_TOO_LARGE' : 'UPLOAD_FAILED',
+    });
   }
 }

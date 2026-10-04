@@ -20,7 +20,7 @@ import {
   resetCodeUsage,
   UsageStoreError,
 } from './access_control.js';
-import { processSupportLetter, getSubmissionPdf, getAllSubmissions } from './support_letter_service.js';
+import { processSupportLetter, loadSubmissionPdf, getAllSubmissions } from './support_letter_service.js';
 import {
   classifyUpstreamFailure,
   logUpstreamFailure,
@@ -29,6 +29,7 @@ import {
   UNCONFIGURED_PUBLIC_MESSAGE,
 } from './generation_errors.js';
 import { applyExtraInstructions } from './extra_instructions.js';
+import { IMAGE_TOO_LARGE_MESSAGE, isPublicHttpUrl, requestContainsImageData } from './image_payload.js';
 import {
   GARMENT_UNRECOGNIZED_MESSAGE,
   outputMatchesModelPhoto,
@@ -439,6 +440,14 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
     const input = applyExtraInstructions(req.body?.input);
     const token = getServerToken();
 
+    // Image bytes must never ride along in this JSON body. Refuse before a try is reserved.
+    if (requestContainsImageData(input)) {
+      return res.status(413).json({
+        error: IMAGE_TOO_LARGE_MESSAGE,
+        code: 'PAYLOAD_TOO_LARGE',
+      });
+    }
+
     // Strict access code enforcement. Client tokens are ignored.
     const accessCode = sanitizeCode(
       (req.body.accessCode as string) ||
@@ -644,7 +653,7 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
       version,
       aspectRatio: input?.aspect_ratio || '1:1',
       resolution: input?.resolution || '2k',
-      modelImageUrl: referenceUrls[1] || '',
+      modelImageUrl: isPublicHttpUrl(referenceUrls[1]) ? referenceUrls[1] : '',
     }, reservationId);
 
     if (responseData?.result) {
@@ -908,12 +917,15 @@ app.post('/api/support-letter', async (req: Request, res: Response) => {
   }
 });
 
-// Download Generated PDF
-app.get('/api/support-letter/:id/pdf', (req: Request, res: Response) => {
+// Download Generated PDF. Admin only. Rebuilt from the saved submission when the file is gone.
+app.get('/api/support-letter/:id/pdf', async (req: Request, res: Response) => {
   try {
+    if (!verifyAdmin(req)) {
+      return res.status(401).send('Unauthorized');
+    }
     const { id } = req.params;
-    const item = getSubmissionPdf(id);
-    if (!item || !fs.existsSync(item.filePath)) {
+    const item = await loadSubmissionPdf(id);
+    if (!item) {
       return res.status(404).send('PDF document not found');
     }
 
@@ -924,8 +936,7 @@ app.get('/api/support-letter/:id/pdf', (req: Request, res: Response) => {
       'Content-Disposition',
       `inline; filename="${safeAsciiName}"; filename*=UTF-8''${encodedName}`
     );
-    const fileStream = fs.createReadStream(item.filePath);
-    return fileStream.pipe(res);
+    return res.send(item.buffer);
   } catch (error: any) {
     console.error('Error sending PDF file:', error);
     return res.status(500).send('Error delivering PDF document');

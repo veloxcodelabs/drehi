@@ -1,4 +1,11 @@
 import { GenerationTask, TaskApiResult, AccessCodeStatus } from '../types';
+import { prepareImageFile } from './prepareImage';
+import {
+  IMAGE_TOO_LARGE_MESSAGE,
+  IMAGE_UPLOAD_FAILED_MESSAGE,
+  isPublicHttpUrl,
+  requestContainsImageData,
+} from '../../image_payload';
 
 export class ApiRequestError extends Error {
   status: number;
@@ -102,45 +109,45 @@ export async function fetchUserTasks(code: string): Promise<GenerationTask[]> {
   }
 }
 
-// Upload file to server and receive accessible HTTP URL, with client fallback
-export async function uploadImageFile(file: File): Promise<{ url: string; filename: string; dataUrl: string }> {
+function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const dataUrl = reader.result as string;
-
-        // Try server upload first
-        try {
-          const res = await fetch('/api/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              dataUrl,
-              filename: file.name,
-            }),
-          });
-
-          const ct = res.headers.get('content-type') || '';
-          if (res.ok && ct.includes('application/json')) {
-            const data = await res.json();
-            if (data.url) {
-              return resolve({ url: data.url, filename: data.filename || file.name, dataUrl });
-            }
-          }
-        } catch {
-          // If server /api/upload fails or unavailable (e.g. static host), fall back to dataUrl
-        }
-
-        // Resilient fallback: dataUrl is natively renderable and supported
-        resolve({ url: dataUrl, filename: file.name, dataUrl });
-      } catch (err) {
-        reject(err);
-      }
-    };
-    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error(IMAGE_UPLOAD_FAILED_MESSAGE));
     reader.readAsDataURL(file);
   });
+}
+
+// Compress, then upload. The returned url is always https and is safe to send to /api/tasks/create.
+export async function uploadImageFile(file: File): Promise<{ url: string; filename: string; previewUrl: string }> {
+  const prepared = await prepareImageFile(file);
+  const dataUrl = await readFileAsDataUrl(prepared.file);
+  let res: Response;
+  try {
+    res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dataUrl,
+        filename: prepared.file.name,
+      }),
+    });
+  } catch {
+    throw new ApiRequestError(IMAGE_UPLOAD_FAILED_MESSAGE);
+  }
+
+  const data = await readJsonBody(res);
+  if (res.status === 413) {
+    throw new ApiRequestError(data?.error || IMAGE_TOO_LARGE_MESSAGE, { status: 413, code: 'PAYLOAD_TOO_LARGE' });
+  }
+  if (!res.ok || !isPublicHttpUrl(data?.url)) {
+    throw new ApiRequestError(data?.error || IMAGE_UPLOAD_FAILED_MESSAGE, { status: res.status });
+  }
+  return {
+    url: data.url,
+    filename: data.filename || prepared.file.name,
+    previewUrl: prepared.previewUrl,
+  };
 }
 
 // Check backend service status
@@ -223,6 +230,9 @@ export async function createTask(params: {
   accessCode?: string;
 }): Promise<CreatedTask> {
   const simulate = params.simulate ?? false;
+  if (requestContainsImageData(params.input)) {
+    throw new ApiRequestError(IMAGE_TOO_LARGE_MESSAGE, { status: 413, code: 'PAYLOAD_TOO_LARGE' });
+  }
   const res = await fetch('/api/tasks/create', {
     method: 'POST',
     headers: {
@@ -250,7 +260,7 @@ export async function createTask(params: {
   }
 
   throw new ApiRequestError(
-    data?.error || 'Възникна грешка при стартиране на генерацията.',
+    data?.error || (res.status === 413 ? IMAGE_TOO_LARGE_MESSAGE : 'Възникна грешка при стартиране на генерацията.'),
     {
       status: res.status,
       code: typeof data?.code === 'string' ? data.code : undefined,

@@ -87,5 +87,6 @@ export interface SupportLetterResponse {
   id: string;
   refNumber: string;
   pdfDownloadUrl: string;
+  pdfBase64?: string;
   message?: string;
 }

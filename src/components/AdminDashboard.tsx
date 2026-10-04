@@ -60,6 +60,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
   const [codeNotice, setCodeNotice] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeBusy, setCodeBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,6 +122,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
       setFetchError(err.message || 'Грешка при извличане на данните');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const downloadLetter = async (item: AdminSubmission) => {
+    if (!token) return;
+    setPdfError(null);
+    try {
+      const res = await fetch(`/api/support-letter/${encodeURIComponent(item.id || item.refNumber)}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        setPdfError('PDF документът не може да се отвори. Моля, опитайте отново.');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Letter-of-Intent-${item.refNumber || item.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setPdfError('PDF документът не може да се отвори. Моля, опитайте отново.');
     }
   };
 
@@ -362,6 +388,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
           </div>
         </div>
 
+        {pdfError && (
+          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+            {pdfError}
+          </div>
+        )}
+
         {fetchError && (
           <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -423,15 +455,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
                   </div>
 
                   {/* PDF Download Button */}
-                  <a
-                    href={item.pdfUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => downloadLetter(item)}
                     className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-xs cursor-pointer shrink-0"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Свали PDF</span>
-                  </a>
+                  </button>
                 </div>
 
                 {/* Grid Details */}

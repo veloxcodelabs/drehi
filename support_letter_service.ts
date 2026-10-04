@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDocs, collection } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, getDocs, collection } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { generateSupportLetterPdf, LetterParticipantData } from './pdf_generator.js';
 
@@ -96,7 +96,7 @@ function formatSofiaTimestamp(date: Date): string {
 
 export async function processSupportLetter(
   data: LetterParticipantData
-): Promise<{ success: boolean; id: string; refNumber: string; pdfDownloadUrl: string; message: string }> {
+): Promise<{ success: boolean; id: string; refNumber: string; pdfDownloadUrl: string; pdfBase64: string; message: string }> {
   const id = crypto.randomUUID();
   const hexPart = crypto.randomBytes(3).toString('hex').toUpperCase();
   const refNumber = `MSL-LOI-2026-${hexPart}`;
@@ -179,33 +179,105 @@ export async function processSupportLetter(
     id,
     refNumber,
     pdfDownloadUrl,
+    pdfBase64: pdfBuffer.toString('base64'),
     message: 'Благодарим! Ще се свържем с Вас до 2 работни дни.',
   };
 }
 
-export function getSubmissionPdf(id: string): { filePath: string; fileName: string } | null {
+function letterFromRecord(record: Partial<SavedSubmission>): LetterParticipantData {
+  return {
+    companyName: String(record.companyName || ''),
+    uic: String(record.uic || ''),
+    website: String(record.website || ''),
+    contactName: String(record.contactName || ''),
+    role: String(record.role || ''),
+    email: String(record.email || ''),
+    needs: Array.isArray(record.needs) ? record.needs.map((item) => String(item)) : [],
+    motivation: record.motivation ? String(record.motivation) : '',
+    consentAccepted: record.consentAccepted !== false,
+    accessCode: record.accessCode || '',
+    lastImageUrl: record.lastImageUrl || '',
+  };
+}
+
+function dateFromRecord(record: Partial<SavedSubmission>): Date {
+  if (record.createdAt) {
+    const parsed = new Date(record.createdAt);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  if (typeof record.submittedAtTimestamp === 'number') return new Date(record.submittedAtTimestamp);
+  return new Date();
+}
+
+/** Rebuild a letter from the fields stored with the submission. */
+export async function buildLetterPdfFromSubmission(record: Partial<SavedSubmission>): Promise<Buffer> {
+  const refNumber = String(record.refNumber || record.id || 'MSL-LOI');
+  return generateSupportLetterPdf(letterFromRecord(record), refNumber, dateFromRecord(record));
+}
+
+async function findSubmissionRecord(id: string): Promise<SavedSubmission | null> {
+  const local = loadSubmissionsLocal().find((item) => item.id === id || item.refNumber === id);
+  if (local) return local;
+  if (!firebaseDb) return null;
+
+  try {
+    const direct = await getDoc(doc(firebaseDb, 'loi_submissions', id));
+    if (direct.exists()) return direct.data() as SavedSubmission;
+  } catch (error: any) {
+    console.warn('[Support letter] Firestore get failed:', error.message);
+  }
+
+  try {
+    const snap = await getDocs(collection(firebaseDb, 'loi_submissions'));
+    let found: SavedSubmission | null = null;
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as SavedSubmission;
+      if (!found && (data.id === id || data.refNumber === id || docSnap.id === id)) found = data;
+    });
+    return found;
+  } catch (error: any) {
+    console.warn('[Support letter] Firestore scan failed:', error.message);
+    return null;
+  }
+}
+
+/**
+ * PDF bytes for an admin download. Uses the file on this instance when it is
+ * still there, otherwise rebuilds the letter from the saved submission.
+ */
+export async function loadSubmissionPdf(id: string): Promise<{ buffer: Buffer; fileName: string } | null> {
+  const safeId = String(id || '').trim();
+  if (!safeId) return null;
+
   const localList = loadSubmissionsLocal();
-  const found = localList.find((item) => item.id === id || item.refNumber === id);
-
-  if (found && found.pdfPath && fs.existsSync(found.pdfPath)) {
+  const cached = localList.find((item) => item.id === safeId || item.refNumber === safeId);
+  if (cached?.pdfPath && fs.existsSync(cached.pdfPath)) {
     return {
-      filePath: found.pdfPath,
-      fileName: `Letter_of_Intent_${found.refNumber}.pdf`,
+      buffer: fs.readFileSync(cached.pdfPath),
+      fileName: `Letter_of_Intent_${cached.refNumber || safeId}.pdf`,
     };
   }
 
-  // Check direct file in letters directory
-  const files = fs.readdirSync(LETTERS_DIR);
-  const matched = files.find((f) => f.includes(id));
-  if (matched) {
-    const fullPath = path.join(LETTERS_DIR, matched);
-    return {
-      filePath: fullPath,
-      fileName: `Letter_of_Intent_${matched}`,
-    };
+  try {
+    const files = fs.existsSync(LETTERS_DIR) ? fs.readdirSync(LETTERS_DIR) : [];
+    const matched = files.find((fileName) => fileName.includes(safeId));
+    if (matched) {
+      return {
+        buffer: fs.readFileSync(path.join(LETTERS_DIR, matched)),
+        fileName: `Letter_of_Intent_${matched}`,
+      };
+    }
+  } catch (error) {
+    console.warn('[Support letter] Local PDF lookup failed:', error);
   }
 
-  return null;
+  const record = await findSubmissionRecord(safeId);
+  if (!record) return null;
+  const buffer = await buildLetterPdfFromSubmission(record);
+  return {
+    buffer,
+    fileName: `Letter_of_Intent_${record.refNumber || safeId}.pdf`,
+  };
 }
 
 // Fetch all submissions from Firestore (newest first)

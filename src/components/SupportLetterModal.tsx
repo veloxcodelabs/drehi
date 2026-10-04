@@ -166,7 +166,11 @@ export const SupportLetterModal: React.FC<SupportLetterModalProps> = ({
               {/* Actions */}
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
                 <a
-                  href={result.pdfDownloadUrl}
+                  href={
+                    result.pdfBase64
+                      ? `data:application/pdf;base64,${result.pdfBase64}`
+                      : result.pdfDownloadUrl
+                  }
                   download={`Letter-of-Intent-${result.refNumber}.pdf`}
                   className="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-all active:scale-[0.99] cursor-pointer"
                 >

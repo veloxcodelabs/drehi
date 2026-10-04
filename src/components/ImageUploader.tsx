@@ -2,6 +2,12 @@ import React, { useRef, useState } from 'react';
 import { UploadCloud, X, Loader2, Check, User, Shirt } from 'lucide-react';
 import { UploadedImage } from '../types';
 import { uploadImageFile } from '../lib/api';
+import { IMAGE_FORMAT_MESSAGE } from '../../image_payload';
+
+function isImageFile(file: File): boolean {
+  if (file.type.startsWith('image/')) return true;
+  return /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name);
+}
 
 interface ImageUploaderProps {
   garmentImage: UploadedImage | null;
@@ -28,7 +34,10 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   const handleGarmentFile = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     const file = fileList[0];
-    if (!file.type.startsWith('image/')) return;
+    if (!isImageFile(file)) {
+      setGarmentError(IMAGE_FORMAT_MESSAGE);
+      return;
+    }
 
     setGarmentError(null);
     setIsUploadingGarment(true);
@@ -37,8 +46,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
       onGarmentChange({
         id: Math.random().toString(36).substring(2, 9),
         url: uploaded.url,
-        dataUrl: uploaded.dataUrl,
-        previewUrl: uploaded.dataUrl || uploaded.url,
+        previewUrl: uploaded.previewUrl || uploaded.url,
         filename: uploaded.filename,
         size: file.size,
       });
@@ -53,7 +61,10 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   const handleModelFile = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     const file = fileList[0];
-    if (!file.type.startsWith('image/')) return;
+    if (!isImageFile(file)) {
+      setModelError(IMAGE_FORMAT_MESSAGE);
+      return;
+    }
 
     setModelError(null);
     setIsUploadingModel(true);
@@ -62,8 +73,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
       onModelChange({
         id: Math.random().toString(36).substring(2, 9),
         url: uploaded.url,
-        dataUrl: uploaded.dataUrl,
-        previewUrl: uploaded.dataUrl || uploaded.url,
+        previewUrl: uploaded.previewUrl || uploaded.url,
         filename: uploaded.filename,
         size: file.size,
       });
@@ -134,7 +144,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             <input
               ref={garmentInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               className="hidden"
               onChange={(e) => handleGarmentFile(e.target.files)}
             />
@@ -217,7 +227,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             <input
               ref={modelInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               className="hidden"
               onChange={(e) => handleModelFile(e.target.files)}
             />
