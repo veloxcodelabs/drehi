@@ -25,6 +25,8 @@ export interface RecentTask {
   aspectRatio?: string;
   resolution?: string;
   outputUrls?: string[];
+  /** Public URL of the person photo (img_urls[1]). Used to detect an unchanged result. */
+  modelImageUrl?: string;
   status?: string;
   predictTime?: number;
   totalTime?: number;
@@ -481,6 +483,12 @@ export function applyAddCredits(
 export function tasksFor(state: UsageState, code: string): RecentTask[] {
   const tasks = state.codes[code]?.recentTasks || [];
   return [...tasks].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+
+export function metaOfTask(state: UsageState, taskId: string): RecentTask | null {
+  const reservationId = state.taskIndex[taskId];
+  if (!reservationId) return null;
+  return state.reservations[reservationId]?.meta || null;
 }
 
 export function ownerOfTask(state: UsageState, taskId: string): string | null {

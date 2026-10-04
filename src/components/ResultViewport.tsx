@@ -147,6 +147,11 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
     );
   }
 
+  // A rejected try-on keeps the error in the status card. Don't present it as a finished lookbook.
+  if (currentTask && !isGenerating && currentTask.status !== 'succeeded') {
+    return null;
+  }
+
   // Active generating state
   if (isGenerating && (!currentTask || currentTask.status !== 'succeeded')) {
     return (

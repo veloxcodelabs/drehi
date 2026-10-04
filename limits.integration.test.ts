@@ -4,6 +4,14 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import http from 'http';
+import sharp from 'sharp';
+
+const modelPng = await sharp({
+  create: { width: 48, height: 64, channels: 3, background: { r: 210, g: 90, b: 110 } },
+}).png().toBuffer();
+const changedPng = await sharp({
+  create: { width: 48, height: 64, channels: 3, background: { r: 20, g: 30, b: 50 } },
+}).png().toBuffer();
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'limits-'));
 process.env.USAGE_STORE = 'file';
@@ -17,13 +25,25 @@ type TaskRecord = { status: string; output: string[]; error?: string };
 
 const tasks = new Map<string, TaskRecord>();
 let upstreamMode: 'ok' | 'quota' = 'ok';
+let lastCreateBody: { input?: Record<string, unknown> } | null = null;
 
 const realFetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  if (url.includes('example.com/model-photo.png')) {
+    return new Response(new Uint8Array(modelPng), { status: 200, headers: { 'content-type': 'image/png' } });
+  }
+  if (url.includes('example.com/changed-photo.png')) {
+    return new Response(new Uint8Array(changedPng), { status: 200, headers: { 'content-type': 'image/png' } });
+  }
   if (!url.includes('api.vmodel.ai')) return realFetch(input, init);
 
   if (url.endsWith('/create')) {
+    try {
+      lastCreateBody = init?.body ? JSON.parse(String(init.body)) : null;
+    } catch {
+      lastCreateBody = null;
+    }
     if (upstreamMode === 'quota') {
       return new Response(
         JSON.stringify({
@@ -240,4 +260,95 @@ test('server enforces try limits, refunds failures, and keeps the API token serv
   assert.equal(res.status, 200, JSON.stringify(data));
   assert.equal(JSON.stringify(data).includes('server-side-test-token'), false);
   assert.equal(JSON.stringify(data).includes('client-should-be-ignored'), false);
+
+  await reset('styler');
+  const blankNote = await realFetch(`${base}/api/tasks/create`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-access-code': 'styler' },
+    body: JSON.stringify({
+      version: 'test-version',
+      input: { prompt: 'lookbook', extra_instructions: '   \n\t  ' },
+      accessCode: 'styler',
+    }),
+  });
+  assert.equal(blankNote.status, 200);
+  assert.equal(lastCreateBody?.input?.prompt, 'lookbook');
+  assert.equal('extra_instructions' in (lastCreateBody?.input || {}), false);
+
+  const noted = await realFetch(`${base}/api/tasks/create`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-access-code': 'styler' },
+    body: JSON.stringify({
+      version: 'test-version',
+      input: {
+        prompt: 'lookbook',
+        extra_instructions: `  дрехата да е по-дълга\u0000  ${'я'.repeat(400)}`,
+      },
+      accessCode: 'styler',
+    }),
+  });
+  assert.equal(noted.status, 200);
+  const sentPrompt = String(lastCreateBody?.input?.prompt || '');
+  assert.ok(sentPrompt.startsWith('lookbook\n\nAdditional instructions: дрехата да е по-дълга '));
+  assert.equal(sentPrompt.length, 'lookbook\n\nAdditional instructions: дрехата да е по-дълга '.length + 300 - 'дрехата да е по-дълга '.length);
+  assert.equal('extra_instructions' in (lastCreateBody?.input || {}), false);
+
+  await reset('junona');
+  const pairInput = {
+    prompt: 'lookbook',
+    img_urls: ['https://example.com/changed-photo.png', 'https://example.com/model-photo.png'],
+  };
+  const unchangedCreate = await realFetch(`${base}/api/tasks/create`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-access-code': 'junona' },
+    body: JSON.stringify({ version: 'test-version', input: pairInput, accessCode: 'junona' }),
+  });
+  const unchangedData = await unchangedCreate.json();
+  assert.equal(unchangedCreate.status, 200, JSON.stringify(unchangedData));
+  const sentPairPrompt = String(lastCreateBody?.input?.prompt || '');
+  assert.match(sentPairPrompt, /first reference image is the garment/);
+  assert.match(sentPairPrompt, /second reference image is the person/);
+  assert.ok(sentPairPrompt.endsWith('lookbook'));
+  assert.deepEqual(lastCreateBody?.input?.img_urls, pairInput.img_urls);
+  const unchangedId = unchangedData.result.task_id as string;
+  tasks.get(unchangedId)!.status = 'succeeded';
+  tasks.get(unchangedId)!.output = ['https://example.com/model-photo.png'];
+  const unchangedPoll = await poll(unchangedId, 'junona');
+  assert.equal(unchangedPoll.data.result.status, 'failed');
+  assert.match(unchangedPoll.data.result.error, /Не успяхме да разпознаем дрехата/);
+  assert.equal(unchangedPoll.data.result.remaining, 3);
+  const afterUnchanged = await auth('junona');
+  assert.equal(afterUnchanged.data.used, 0);
+  assert.equal(afterUnchanged.data.remaining, 3);
+
+  const changedCreate = await realFetch(`${base}/api/tasks/create`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-access-code': 'junona' },
+    body: JSON.stringify({ version: 'test-version', input: pairInput, accessCode: 'junona' }),
+  });
+  const changedData = await changedCreate.json();
+  assert.equal(changedCreate.status, 200, JSON.stringify(changedData));
+  const changedId = changedData.result.task_id as string;
+  tasks.get(changedId)!.status = 'succeeded';
+  tasks.get(changedId)!.output = ['https://example.com/changed-photo.png'];
+  const changedPoll = await poll(changedId, 'junona');
+  assert.equal(changedPoll.data.result.status, 'succeeded');
+  assert.equal(changedPoll.data.result.remaining, 2);
+
+  const signaledCreate = await realFetch(`${base}/api/tasks/create`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-access-code': 'junona' },
+    body: JSON.stringify({ version: 'test-version', input: pairInput, accessCode: 'junona' }),
+  });
+  const signaledData = await signaledCreate.json();
+  const signaledId = signaledData.result.task_id as string;
+  tasks.get(signaledId)!.status = 'succeeded';
+  tasks.get(signaledId)!.error = 'could not detect the garment';
+  tasks.get(signaledId)!.output = ['https://example.com/changed-photo.png'];
+  const signaledPoll = await poll(signaledId, 'junona');
+  assert.equal(signaledPoll.data.result.status, 'failed');
+  assert.match(signaledPoll.data.result.error, /Не успяхме да разпознаем дрехата/);
+  const afterSignal = await auth('junona');
+  assert.equal(afterSignal.data.used, 1);
+  assert.equal(afterSignal.data.remaining, 2);
 });

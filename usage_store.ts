@@ -18,6 +18,7 @@ import {
   applyReleaseTask,
   applyReserve,
   applyReset,
+  metaOfTask,
   ownerOfTask,
   sofiaDateString,
   tasksFor,
@@ -51,6 +52,7 @@ export interface UsageBackend {
   addCredits(code: string, additional: number): Promise<Balance>;
   tasks(code: string): Promise<RecentTask[]>;
   ownerOf(taskId: string): Promise<string | null>;
+  metaOf(taskId: string): Promise<RecentTask | null>;
 }
 
 function selectMode(): 'file' | 'firestore' {
@@ -164,6 +166,9 @@ export function createFileBackend(filePath: string): UsageBackend {
     },
     ownerOf(taskId) {
       return exclusive(() => ownerOfTask(read(), taskId));
+    },
+    metaOf(taskId) {
+      return exclusive(() => metaOfTask(read(), taskId));
     },
   };
 }
@@ -470,6 +475,18 @@ function createFirestoreBackend(): UsageBackend {
         const snap = await db.doc(`generation_task_index/${taskDocId(taskId)}`).get();
         if (!snap.exists) return null;
         return snap.data()?.code ? String(snap.data().code) : null;
+      });
+    },
+    metaOf(taskId) {
+      return run(async (db) => {
+        const indexSnap = await db.doc(`generation_task_index/${taskDocId(taskId)}`).get();
+        if (!indexSnap.exists) return null;
+        const reservationId = String(indexSnap.data()?.reservationId || '');
+        if (!reservationId) return null;
+        const reservationSnap = await db.doc(`generation_reservations/${reservationId}`).get();
+        if (!reservationSnap.exists) return null;
+        const meta = reservationSnap.data()?.meta;
+        return meta && typeof meta === 'object' ? (meta as RecentTask) : null;
       });
     },
   };

@@ -235,6 +235,7 @@ export async function registerPendingTask(
     version: initialData?.version || '',
     aspectRatio: initialData?.aspectRatio || initialData?.aspect_ratio || '',
     resolution: initialData?.resolution || '',
+    modelImageUrl: typeof initialData?.modelImageUrl === 'string' ? initialData.modelImageUrl : '',
     status: 'processing',
     outputUrls: [],
   };
@@ -320,6 +321,11 @@ export async function getTasksForCode(rawCode: string): Promise<any[]> {
     predictTime: task.predictTime,
     totalTime: task.totalTime,
   }));
+}
+
+export async function getTaskModelImageUrl(taskId: string): Promise<string> {
+  const meta = await backend().metaOf(taskId);
+  return typeof meta?.modelImageUrl === 'string' ? meta.modelImageUrl : '';
 }
 
 export async function isTaskOwnedByCode(taskId: string, rawCode: string): Promise<boolean> {
