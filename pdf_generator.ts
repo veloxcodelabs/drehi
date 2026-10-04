@@ -14,6 +14,16 @@ export interface LetterParticipantData {
   lastImageUrl?: string;
 }
 
+/** Beneficiary named on the letter of intent. Change this in one place. */
+export const BENEFICIARY_COMPANY = {
+  nameBg: '„Здравец ХМ“ ЕООД',
+  nameEn: 'Zdravets HM EOOD',
+  uic: '206412964',
+} as const;
+
+const BENEFICIARY_LINE_BG = `${BENEFICIARY_COMPANY.nameBg}, ЕИК ${BENEFICIARY_COMPANY.uic} – Martitony Style Lab`;
+const BENEFICIARY_LINE_EN = `${BENEFICIARY_COMPANY.nameEn}, UIC (ЕИК) ${BENEFICIARY_COMPANY.uic} – Martitony Style Lab`;
+
 const NEED_TRANSLATIONS: Record<string, string> = {
   'Клиентите не могат да си представят как дрехата ще им стои':
     'Shoppers struggle to visualize how garments look on their body',
@@ -62,7 +72,7 @@ export async function generateSupportLetterPdf(
         bufferPages: true,
         info: {
           Title: `Letter of Intent / Support - ${refNumber}`,
-          Author: 'Martitony Style Lab (Space Code EOOD)',
+          Author: `Martitony Style Lab (${BENEFICIARY_LINE_EN})`,
           Subject: 'AI Virtual Try-On Pilot Program Letter of Intent',
           Keywords: 'AI, Fashion Tech, Letter of Intent, Virtual Try-on, EIT Culture & Creativity',
         },
@@ -123,7 +133,7 @@ export async function generateSupportLetterPdf(
 
       doc.font('LiberationSans-Bold').fontSize(7.5).text('ДО (Разработчик на решението):', 44, metaY1 + 36);
       doc.font('LiberationSans').fontSize(7.5).text(
-        '„Спейс Коуд“ ЕООД / Space Code EOOD – Martitony Style Lab  ·  Имейл: info@martitony.com',
+        `${BENEFICIARY_LINE_BG}  ·  Имейл: info@martitony.com`,
         44,
         metaY1 + 45
       );
@@ -266,7 +276,7 @@ export async function generateSupportLetterPdf(
 
       doc.font('LiberationSans-Bold').fontSize(7.5).text('TO (Solution Provider):', 44, metaY2 + 36);
       doc.font('LiberationSans').fontSize(7.5).text(
-        'Space Code EOOD – Martitony Style Lab  ·  Email: info@martitony.com',
+        `${BENEFICIARY_LINE_EN}  ·  Email: info@martitony.com`,
         44,
         metaY2 + 45
       );
