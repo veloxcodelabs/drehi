@@ -10,15 +10,20 @@ import { generateSupportLetterPdf, LetterParticipantData } from './pdf_generator
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.resolve(__dirname, 'data');
+const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA_DIR = isVercel ? '/tmp/data' : path.resolve(__dirname, 'data');
 const LETTERS_DIR = path.resolve(DATA_DIR, 'support_letters');
 const SUBMISSIONS_FILE = path.resolve(DATA_DIR, 'support_submissions.json');
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-if (!fs.existsSync(LETTERS_DIR)) {
-  fs.mkdirSync(LETTERS_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(LETTERS_DIR)) {
+    fs.mkdirSync(LETTERS_DIR, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Could not create data dir in support_letter_service:', e);
 }
 
 // Initialize Firebase SDK

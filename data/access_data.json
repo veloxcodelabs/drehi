@@ -3,7 +3,7 @@
     "test": {
       "code": "test",
       "totalAllowed": 3,
-      "used": 0
+      "used": 3
     },
     "bekoda": {
       "code": "bekoda",
@@ -918,7 +918,7 @@
   },
   "dailyUsage": {
     "date": "2026-10-04",
-    "count": 1
+    "count": 4
   },
   "taskRegistrations": {
     "sim_acd0f9cc95983459": {
@@ -939,6 +939,63 @@
         "totalTime": 6,
         "completedAt": 1791102288900
       }
+    },
+    "dlvy6gq1t3oiwwhyp0": {
+      "code": "test",
+      "finalized": true,
+      "createdAt": 1791106262440,
+      "taskData": {
+        "prompt": "High-end fashion editorial lookbook photography of the exact uploaded garment worn by the model. Immaculate studio lighting, soft shadows, sharp textile drape, authentic fabric textures, luxury apparel catalogue photo. Neutral clean backdrop.",
+        "modelName": "GPT Image 2.5",
+        "version": "cce611c44553ba5f061813d75a1e5f93d8c901047528da275f667ebe7d784565",
+        "aspectRatio": "3:4",
+        "resolution": "2k",
+        "outputUrls": [
+          "https://cdn.vmimgs.com/datarm/user/result/20261004/0ede1140-7a8e-4725-a318-7ae50f53365f.png?OSSAccessKeyId=LTAI5tAFeqDfh6oufFkkZFCm&Expires=1791120694&Signature=DoxA7t1uWNq2uwWfS0yoWIZDOJ0%3D"
+        ],
+        "predictTime": 32,
+        "totalTime": 32,
+        "completedAt": 1791106296781,
+        "status": "succeeded"
+      }
+    },
+    "dlvy7at5hpcpgr69kg": {
+      "code": "test",
+      "finalized": true,
+      "createdAt": 1791106327978,
+      "taskData": {
+        "prompt": "High-end fashion editorial lookbook photography of the exact uploaded garment worn by the model. Immaculate studio lighting, soft shadows, sharp textile drape, authentic fabric textures, luxury apparel catalogue photo. Neutral clean backdrop.",
+        "modelName": "GPT Image 2.5",
+        "version": "cce611c44553ba5f061813d75a1e5f93d8c901047528da275f667ebe7d784565",
+        "aspectRatio": "3:4",
+        "resolution": "2k",
+        "outputUrls": [
+          "https://cdn.vmimgs.com/datarm/user/result/20261004/f7042ade-a23a-44b2-955d-80e145dda844.png?OSSAccessKeyId=LTAI5tAFeqDfh6oufFkkZFCm&Expires=1791120770&Signature=Qs3tGAxsjcyMk5BYslxdrCqRf%2Fk%3D"
+        ],
+        "predictTime": 43,
+        "totalTime": 43,
+        "completedAt": 1791106370265,
+        "status": "succeeded"
+      }
+    },
+    "dlvyaqy2aol7pcp8nk": {
+      "code": "test",
+      "finalized": true,
+      "createdAt": 1791106598140,
+      "taskData": {
+        "prompt": "High-end fashion editorial lookbook photography of the exact uploaded garment worn by the model. Immaculate studio lighting, soft shadows, sharp textile drape, authentic fabric textures, luxury apparel catalogue photo. Neutral clean backdrop.",
+        "modelName": "GPT Image 2.5",
+        "version": "cce611c44553ba5f061813d75a1e5f93d8c901047528da275f667ebe7d784565",
+        "aspectRatio": "3:4",
+        "resolution": "2k",
+        "outputUrls": [
+          "https://cdn.vmimgs.com/datarm/user/result/20261004/295cc994-b0da-4bb2-b028-522606fd37a4.png?OSSAccessKeyId=LTAI5tAFeqDfh6oufFkkZFCm&Expires=1791121042&Signature=I1RTXWFxxhGlhEuyuvNR6miWJeE%3D"
+        ],
+        "predictTime": 45,
+        "totalTime": 45,
+        "completedAt": 1791106643378,
+        "status": "succeeded"
+      }
     }
   },
   "logs": [
@@ -948,6 +1005,27 @@
       "status": "success",
       "taskId": "sim_acd0f9cc95983459",
       "details": "Simulated generation completed"
+    },
+    {
+      "code": "test",
+      "time": "2026-10-04T09:31:36.781Z",
+      "status": "success",
+      "taskId": "dlvy6gq1t3oiwwhyp0",
+      "details": "Task completed successfully"
+    },
+    {
+      "code": "test",
+      "time": "2026-10-04T09:32:50.264Z",
+      "status": "success",
+      "taskId": "dlvy7at5hpcpgr69kg",
+      "details": "Task completed successfully"
+    },
+    {
+      "code": "test",
+      "time": "2026-10-04T09:37:23.378Z",
+      "status": "success",
+      "taskId": "dlvyaqy2aol7pcp8nk",
+      "details": "Task completed successfully"
     }
   ]
 }
