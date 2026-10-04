@@ -1,0 +1,143 @@
+[
+  {
+    "id": "dcbf5e6f-57a4-4430-b472-5fc8e990d264",
+    "refNumber": "MSL-LOI-2026-C54CED",
+    "companyName": "Българска Мода ЕООД",
+    "uic": "206789123",
+    "website": "https://bgmoda.bg",
+    "contactName": "Пламен Николов",
+    "role": "Управител",
+    "email": "plamen@bgmoda.bg",
+    "needs": [
+      "Клиентите не могат да си представят как дрехата ще им стои",
+      "По-висока конверсия в онлайн магазина"
+    ],
+    "motivation": "Очакваме пилотният проект да даде измерим резултат върху конверсията в онлайн магазина.",
+    "consentAccepted": true,
+    "accessCode": "benmodel",
+    "timestamp": "04.10.2026 г., 11:05 ч.",
+    "createdAt": "2026-10-04T08:05:33.988Z",
+    "pdfUrl": "/api/support-letter/dcbf5e6f-57a4-4430-b472-5fc8e990d264/pdf",
+    "pdfPath": "/app/applet/data/support_letters/MSL-LOI-2026-C54CED.pdf",
+    "lastImageUrl": "",
+    "submittedAtTimestamp": 1791101133988
+  },
+  {
+    "companyName": "Мини Магазин ЕООД",
+    "uic": "111222333",
+    "website": "https://minimall.bg",
+    "contactName": "Ана Стоянова",
+    "role": "Мениджър",
+    "email": "ana@minimall.bg",
+    "needs": [],
+    "motivation": "",
+    "consentAccepted": true,
+    "accessCode": "benmodel",
+    "id": "b2f4953d-f642-41ca-93ad-c54b40d3af31",
+    "refNumber": "MSL-LOI-2026-D18E13",
+    "submittedAt": "2026-10-03T11:27:02.990Z",
+    "submittedAtTimestamp": 1791026822990,
+    "pdfPath": "/app/applet/data/support_letters/MSL-LOI-2026-D18E13.pdf",
+    "emailsSent": {
+      "admin": true,
+      "shop": true
+    }
+  },
+  {
+    "companyName": "Стил & Елеганс ООД",
+    "uic": "205123456",
+    "website": "https://style-elegance.bg",
+    "contactName": "Георги Петров",
+    "role": "Основател & Управител",
+    "email": "georgi@style-elegance.bg",
+    "needs": [
+      "Клиентите не могат да си представят как дрехата ще им стои",
+      "По-висока конверсия в онлайн магазина"
+    ],
+    "motivation": "Искаме да интегрираме виртуална проба, за да повишим сигурността на клиентите при избор на размер.",
+    "consentAccepted": true,
+    "accessCode": "benmodel",
+    "id": "07cef616-7208-482c-9b58-fb9d6b93296a",
+    "refNumber": "MSL-LOI-2026-A51FA8",
+    "submittedAt": "2026-10-03T11:26:56.822Z",
+    "submittedAtTimestamp": 1791026816822,
+    "pdfPath": "/app/applet/data/support_letters/MSL-LOI-2026-A51FA8.pdf",
+    "emailsSent": {
+      "admin": true,
+      "shop": true
+    }
+  },
+  {
+    "companyName": "Стил & Елеганс ООД",
+    "uic": "205123456",
+    "website": "https://style-elegance.bg",
+    "contactName": "Георги Петров",
+    "role": "Основател & Управител",
+    "email": "georgi@style-elegance.bg",
+    "needs": [
+      "Клиентите не могат да си представят как дрехата ще им стои",
+      "По-висока конверсия в онлайн магазина"
+    ],
+    "motivation": "Искаме да интегрираме виртуална проба, за да повишим сигурността на клиентите при избор на размер.",
+    "consentAccepted": true,
+    "accessCode": "benmodel",
+    "id": "52b8fdfa-0c45-4b5c-b67a-b37dab200f88",
+    "refNumber": "MSL-LOI-2026-A394AF",
+    "submittedAt": "2026-10-03T11:26:47.719Z",
+    "submittedAtTimestamp": 1791026807719,
+    "pdfPath": "/app/applet/data/support_letters/MSL-LOI-2026-A394AF.pdf",
+    "emailsSent": {
+      "admin": true,
+      "shop": true
+    }
+  },
+  {
+    "companyName": "test ood",
+    "uic": "123434536",
+    "website": "test.com",
+    "contactName": "test test",
+    "role": "test",
+    "email": "test@test.com",
+    "needs": [
+      "Клиентите не могат да си представят как дрехата ще им стои"
+    ],
+    "motivation": "",
+    "consentAccepted": true,
+    "accessCode": "test",
+    "lastImageUrl": "https://cdn.vmimgs.com/datarm/user/result/20261003/111a1acf-4522-4431-930b-25e0dc51d156.png?OSSAccessKeyId=LTAI5tAFeqDfh6oufFkkZFCm&Expires=1791035017&Signature=NPupMbAs5BxaZO%2BcDXb5VVXAu8c%3D",
+    "id": "bbf0e1d5-3182-4b5d-b5ff-0862feee30d3",
+    "refNumber": "MSL-LOI-2026-CDB047",
+    "submittedAt": "2026-10-03T11:18:38.262Z",
+    "submittedAtTimestamp": 1791026318262,
+    "pdfPath": "/app/applet/data/support_letters/MSL-LOI-2026-CDB047.pdf",
+    "emailsSent": {
+      "admin": true,
+      "shop": true
+    }
+  },
+  {
+    "companyName": "Мода Стил ООД",
+    "uic": "123456789",
+    "website": "https://modastyle.bg",
+    "contactName": "Мария Димитрова",
+    "role": "Търговски директор",
+    "email": "test.shop@example.com",
+    "needs": [
+      "Клиентите не могат да си представят как дрехата ще им стои",
+      "Връщания заради размер, кройка или разлика спрямо снимката",
+      "По-висока конверсия в онлайн магазина"
+    ],
+    "motivation": "Очакваме повишена ангажираност и намаляване на процента върнати артикули.",
+    "consentAccepted": true,
+    "accessCode": "benmodel",
+    "id": "39854f7c-e70f-4c0e-8d2a-7ef6f905ff40",
+    "refNumber": "MSL-LOI-2026-3388F9",
+    "submittedAt": "2026-10-03T11:16:22.583Z",
+    "submittedAtTimestamp": 1791026182583,
+    "pdfPath": "/app/applet/data/support_letters/MSL-LOI-2026-3388F9.pdf",
+    "emailsSent": {
+      "admin": true,
+      "shop": true
+    }
+  }
+]

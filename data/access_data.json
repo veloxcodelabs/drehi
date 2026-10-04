@@ -1,0 +1,953 @@
+{
+  "codes": {
+    "test": {
+      "code": "test",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "bekoda": {
+      "code": "bekoda",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "concept166": {
+      "code": "concept166",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "cvetnov": {
+      "code": "cvetnov",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "erectedstore": {
+      "code": "erectedstore",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "faithinfatih": {
+      "code": "faithinfatih",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "ignisatelier": {
+      "code": "ignisatelier",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "mariaqueenmaria": {
+      "code": "mariaqueenmaria",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "milshop": {
+      "code": "milshop",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "sassabjorg": {
+      "code": "sassabjorg",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "studioibis": {
+      "code": "studioibis",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "stylyne": {
+      "code": "stylyne",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "veza": {
+      "code": "veza",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "veze": {
+      "code": "veze",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "ambitsia": {
+      "code": "ambitsia",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "bg0511": {
+      "code": "bg0511",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "antonella": {
+      "code": "antonella",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "bebeshore": {
+      "code": "bebeshore",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "behaviourswimwea": {
+      "code": "behaviourswimwea",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "byjgk": {
+      "code": "byjgk",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "coolsouls": {
+      "code": "coolsouls",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "diplus": {
+      "code": "diplus",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "knapp": {
+      "code": "knapp",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "lbd": {
+      "code": "lbd",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "lorreti": {
+      "code": "lorreti",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "palomafashion": {
+      "code": "palomafashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "romantikafashion": {
+      "code": "romantikafashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "selfishstyledesi": {
+      "code": "selfishstyledesi",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "abellafashion": {
+      "code": "abellafashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "atelierengele": {
+      "code": "atelierengele",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "avenew": {
+      "code": "avenew",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "boutiquecocoon": {
+      "code": "boutiquecocoon",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "codemoda": {
+      "code": "codemoda",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "denicaboutique": {
+      "code": "denicaboutique",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "elissima": {
+      "code": "elissima",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "ephosbg": {
+      "code": "ephosbg",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "exfashion": {
+      "code": "exfashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "exclusivejeans": {
+      "code": "exclusivejeans",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "margonia": {
+      "code": "margonia",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "nelita": {
+      "code": "nelita",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "radichev": {
+      "code": "radichev",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "rudi": {
+      "code": "rudi",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "rumella": {
+      "code": "rumella",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "sevibysevdalina": {
+      "code": "sevibysevdalina",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "siskahandknit7": {
+      "code": "siskahandknit7",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "soulsinclothes": {
+      "code": "soulsinclothes",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "tarikuti": {
+      "code": "tarikuti",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "vamped": {
+      "code": "vamped",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "vianswimwear": {
+      "code": "vianswimwear",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "vikonte": {
+      "code": "vikonte",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "vulgarista": {
+      "code": "vulgarista",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "whatamonstar": {
+      "code": "whatamonstar",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "vezba": {
+      "code": "vezba",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "vilistil": {
+      "code": "vilistil",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "ethnobuldesign": {
+      "code": "ethnobuldesign",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "stilnajena": {
+      "code": "stilnajena",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "tedy13": {
+      "code": "tedy13",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "caviarcouture": {
+      "code": "caviarcouture",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "plus0concept": {
+      "code": "plus0concept",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "gioiafashionstor": {
+      "code": "gioiafashionstor",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "ivatex": {
+      "code": "ivatex",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "perfectlingerie": {
+      "code": "perfectlingerie",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "signorafashion": {
+      "code": "signorafashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "moncher": {
+      "code": "moncher",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "nolli": {
+      "code": "nolli",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "bogariaatelier": {
+      "code": "bogariaatelier",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "paolastyle": {
+      "code": "paolastyle",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "tianabg": {
+      "code": "tianabg",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "vladimirkaraleev": {
+      "code": "vladimirkaraleev",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "renystyle": {
+      "code": "renystyle",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "bohosi": {
+      "code": "bohosi",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "aakasha": {
+      "code": "aakasha",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "marikris": {
+      "code": "marikris",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "tyapti": {
+      "code": "tyapti",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "slineshop": {
+      "code": "slineshop",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "bonojeans": {
+      "code": "bonojeans",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "tuzar": {
+      "code": "tuzar",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "benmodel": {
+      "code": "benmodel",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "styler": {
+      "code": "styler",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "lazarini": {
+      "code": "lazarini",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "pironetic": {
+      "code": "pironetic",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "smfit": {
+      "code": "smfit",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "junona": {
+      "code": "junona",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "loreen": {
+      "code": "loreen",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "exza": {
+      "code": "exza",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "alessa": {
+      "code": "alessa",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "lucy": {
+      "code": "lucy",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "lily": {
+      "code": "lily",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "vivamoda": {
+      "code": "vivamoda",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "christine": {
+      "code": "christine",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "sensdunoir": {
+      "code": "sensdunoir",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "lovate": {
+      "code": "lovate",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "inisessshop": {
+      "code": "inisessshop",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "yasha": {
+      "code": "yasha",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "veteida": {
+      "code": "veteida",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "iventishirts": {
+      "code": "iventishirts",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "maxifashion": {
+      "code": "maxifashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "cliche": {
+      "code": "cliche",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "jenistyle": {
+      "code": "jenistyle",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "luximabg": {
+      "code": "luximabg",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "pausejeansonline": {
+      "code": "pausejeansonline",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "ikstylee": {
+      "code": "ikstylee",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "aletaparizi": {
+      "code": "aletaparizi",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "emem": {
+      "code": "emem",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "inobg": {
+      "code": "inobg",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "limonibg": {
+      "code": "limonibg",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "maisontangerine": {
+      "code": "maisontangerine",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "twelveoclock": {
+      "code": "twelveoclock",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "mareamoda": {
+      "code": "mareamoda",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "animafashion": {
+      "code": "animafashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "sirenaplus": {
+      "code": "sirenaplus",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "krass": {
+      "code": "krass",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "misschic": {
+      "code": "misschic",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "ladonna": {
+      "code": "ladonna",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "stelaruse": {
+      "code": "stelaruse",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "daphne": {
+      "code": "daphne",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "caramellaonline": {
+      "code": "caramellaonline",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "vitalityaw": {
+      "code": "vitalityaw",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "alert": {
+      "code": "alert",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "randeva": {
+      "code": "randeva",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "lucil": {
+      "code": "lucil",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "richtex": {
+      "code": "richtex",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "renifashion": {
+      "code": "renifashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "startsport": {
+      "code": "startsport",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "avinonline": {
+      "code": "avinonline",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "1inmind": {
+      "code": "1inmind",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "geronimo": {
+      "code": "geronimo",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "pierreshirts": {
+      "code": "pierreshirts",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "dilastyle": {
+      "code": "dilastyle",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "denssell": {
+      "code": "denssell",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "morado": {
+      "code": "morado",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "etere": {
+      "code": "etere",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "rosifashion": {
+      "code": "rosifashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "addictboutique": {
+      "code": "addictboutique",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "rainy": {
+      "code": "rainy",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "zinc": {
+      "code": "zinc",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "norex": {
+      "code": "norex",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "comersebg": {
+      "code": "comersebg",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "echo": {
+      "code": "echo",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "ellis": {
+      "code": "ellis",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "duasol": {
+      "code": "duasol",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "lenafashion": {
+      "code": "lenafashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "vegeabg": {
+      "code": "vegeabg",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "danielfashion": {
+      "code": "danielfashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "rollmann": {
+      "code": "rollmann",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "madstitches": {
+      "code": "madstitches",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "aure": {
+      "code": "aure",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "colorycollection": {
+      "code": "colorycollection",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "mexess": {
+      "code": "mexess",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "granda": {
+      "code": "granda",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "fabnetstudiobg": {
+      "code": "fabnetstudiobg",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "indigostyle": {
+      "code": "indigostyle",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "danini": {
+      "code": "danini",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "venix": {
+      "code": "venix",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "mijelstore": {
+      "code": "mijelstore",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "marty": {
+      "code": "marty",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "tonikafashion": {
+      "code": "tonikafashion",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "lizakain": {
+      "code": "lizakain",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "adorafashionhous": {
+      "code": "adorafashionhous",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "maxistyle": {
+      "code": "maxistyle",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "montre": {
+      "code": "montre",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "maximarket": {
+      "code": "maximarket",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "amiamoda": {
+      "code": "amiamoda",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "veneraplus": {
+      "code": "veneraplus",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "oblechise": {
+      "code": "oblechise",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "soonmama": {
+      "code": "soonmama",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "dawnm": {
+      "code": "dawnm",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "borianasport": {
+      "code": "borianasport",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "freelinebg": {
+      "code": "freelinebg",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "klin": {
+      "code": "klin",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "karmaoriginal": {
+      "code": "karmaoriginal",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "womenspower": {
+      "code": "womenspower",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "twiggyshop": {
+      "code": "twiggyshop",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "popov": {
+      "code": "popov",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "candybaby": {
+      "code": "candybaby",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "ksport": {
+      "code": "ksport",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "monipetrov": {
+      "code": "monipetrov",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "meriboo": {
+      "code": "meriboo",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "maxiladystyle": {
+      "code": "maxiladystyle",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "imane": {
+      "code": "imane",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "efrea": {
+      "code": "efrea",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "redics": {
+      "code": "redics",
+      "totalAllowed": 3,
+      "used": 0
+    },
+    "bstyle": {
+      "code": "bstyle",
+      "totalAllowed": 3,
+      "used": 0
+    }
+  },
+  "dailyUsage": {
+    "date": "2026-10-04",
+    "count": 1
+  },
+  "taskRegistrations": {
+    "sim_acd0f9cc95983459": {
+      "code": "test",
+      "finalized": true,
+      "createdAt": 1791102282897,
+      "taskData": {
+        "prompt": "Test prompt by test code",
+        "modelName": "GPT Image 2.5 (Simulated)",
+        "version": "cce611c44553ba5f061813d75a1e5f93d8c901047528da275f667ebe7d784565",
+        "aspectRatio": "1:1",
+        "resolution": "2k",
+        "outputUrls": [
+          "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?auto=format&fit=crop&w=1200&q=80"
+        ],
+        "status": "succeeded",
+        "predictTime": 4.2,
+        "totalTime": 6,
+        "completedAt": 1791102288900
+      }
+    }
+  },
+  "logs": [
+    {
+      "code": "test",
+      "time": "2026-10-04T08:24:48.900Z",
+      "status": "success",
+      "taskId": "sim_acd0f9cc95983459",
+      "details": "Simulated generation completed"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidLoiSubmission(data) {
+      return data.keys().hasAll(['companyName', 'uic', 'website', 'contactName', 'role', 'email', 'consentAccepted', 'refNumber', 'timestamp']) &&
+             data.companyName is string && data.companyName.size() <= 200 &&
+             data.uic is string && data.uic.size() <= 20 &&
+             data.website is string && data.website.size() <= 300 &&
+             data.contactName is string && data.contactName.size() <= 150 &&
+             data.role is string && data.role.size() <= 150 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.consentAccepted is bool && data.consentAccepted == true &&
+             data.refNumber is string && data.refNumber.size() <= 50 &&
+             data.timestamp is string && data.timestamp.size() <= 100;
+    }
+
+    match /loi_submissions/{submissionId} {
+      allow create: if isValidLoiSubmission(request.resource.data);
+      allow read: if true;
+      allow update, delete: if false;
+    }
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "LoiSubmission": {
+      "title": "Letter of Intent Submission",
+      "description": "A submitted Letter of Intent for Virtual AI Try-on pilot program.",
+      "type": "object",
+      "properties": {
+        "companyName": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Registered company name"
+        },
+        "uic": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Company UIC or tax registration number"
+        },
+        "website": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Company website URL"
+        },
+        "contactName": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Signatory representative full name"
+        },
+        "role": {
+          "type": "string",
+          "maxLength": 150,
+          "description": "Signatory job title"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200,
+          "description": "Contact email address"
+        },
+        "needs": {
+          "type": "array",
+          "description": "Selected business needs"
+        },
+        "motivation": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional motivation and notes"
+        },
+        "consentAccepted": {
+          "type": "boolean",
+          "description": "Whether non-binding consent was affirmed"
+        },
+        "accessCode": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Access code used during submission"
+        },
+        "timestamp": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Bulgarian formatted timestamp string (Europe/Sofia)"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Creation timestamp ISO string"
+        },
+        "refNumber": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Unique reference number"
+        },
+        "pdfUrl": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "URL to download the generated PDF"
+        },
+        "lastImageUrl": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "URL or identifier of last generated model image"
+        }
+      },
+      "required": [
+        "companyName",
+        "uic",
+        "website",
+        "contactName",
+        "role",
+        "email",
+        "consentAccepted",
+        "refNumber",
+        "timestamp"
+      ]
+    }
+  },
+  "firestore": {
+    "/loi_submissions/{submissionId}": {
+      "schema": "LoiSubmission",
+      "description": "Collection of all Letter of Intent pilot applications"
+    }
+  }
+}

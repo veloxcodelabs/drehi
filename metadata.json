@@ -1,0 +1,6 @@
+{
+  "name": "Vision Studio - AI Image Generator",
+  "description": "Create stunning photorealistic visuals and artwork. Upload reference images, craft prompts, customize aspect ratios, and generate high-resolution visuals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
