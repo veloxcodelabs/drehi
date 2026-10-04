@@ -38,8 +38,12 @@ test('admin can open a letter after the PDF file is gone, and guests cannot', as
   fs.writeFileSync(path.join(dataDir, 'support_submissions.json'), JSON.stringify([submission]));
 
   try {
-    const guest = await fetch(`${base}/api/support-letter/${submission.id}/pdf`);
+    const pdfUrl = `${base}/api/support-letter/${submission.id}/pdf`;
+    const guest = await fetch(pdfUrl);
     assert.equal(guest.status, 401);
+
+    const passwordInUrl = await fetch(`${pdfUrl}?password=pdf-test-pass`);
+    assert.equal(passwordInUrl.status, 401);
 
     const login = await fetch(`${base}/api/admin/login`, {
       method: 'POST',
@@ -47,13 +51,35 @@ test('admin can open a letter after the PDF file is gone, and guests cannot', as
       body: JSON.stringify({ password: 'pdf-test-pass' }),
     });
     const loginData = await login.json();
-    const pdf = await fetch(`${base}/api/support-letter/${submission.id}/pdf`, {
+    const setCookie = login.headers.get('set-cookie') || '';
+    assert.match(setCookie, /msl_admin=/);
+    assert.equal(setCookie.includes('pdf-test-pass'), false);
+    const cookiePair = setCookie.split(';')[0];
+
+    const withBearer = await fetch(pdfUrl, {
       headers: { Authorization: `Bearer ${loginData.token}` },
     });
-    const bytes = Buffer.from(await pdf.arrayBuffer());
-    assert.equal(pdf.status, 200);
-    assert.equal(pdf.headers.get('content-type'), 'application/pdf');
-    assert.equal(bytes.subarray(0, 4).toString(), '%PDF');
+    const bearerBytes = Buffer.from(await withBearer.arrayBuffer());
+    assert.equal(withBearer.status, 200);
+    assert.equal(withBearer.headers.get('content-type'), 'application/pdf');
+    assert.equal(bearerBytes.subarray(0, 4).toString(), '%PDF');
+
+    const withHeader = await fetch(pdfUrl, {
+      headers: { 'X-Admin-Token': loginData.token },
+    });
+    assert.equal(withHeader.status, 200);
+    assert.equal(Buffer.from(await withHeader.arrayBuffer()).subarray(0, 4).toString(), '%PDF');
+
+    const withCookie = await fetch(pdfUrl, {
+      headers: { Cookie: cookiePair },
+    });
+    assert.equal(withCookie.status, 200);
+    assert.equal(Buffer.from(await withCookie.arrayBuffer()).subarray(0, 4).toString(), '%PDF');
+
+    const wrong = await fetch(pdfUrl, {
+      headers: { Authorization: 'Bearer not-the-session' },
+    });
+    assert.equal(wrong.status, 401);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }

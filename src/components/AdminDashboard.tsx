@@ -20,6 +20,13 @@ import {
   Hash,
 } from 'lucide-react';
 
+function adminAuthHeaders(adminToken: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${adminToken}`,
+    'X-Admin-Token': adminToken,
+  };
+}
+
 export interface AdminSubmission {
   id: string;
   refNumber: string;
@@ -72,6 +79,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
     try {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
@@ -93,9 +101,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
   };
 
   const handleLogout = () => {
+    const current = token;
     setToken(null);
     sessionStorage.removeItem('msl_admin_token');
     setSubmissions([]);
+    if (current) {
+      fetch('/api/admin/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: adminAuthHeaders(current),
+      }).catch(() => undefined);
+    }
   };
 
   const loadSubmissions = async (adminToken: string) => {
@@ -103,9 +119,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
     setFetchError(null);
     try {
       const res = await fetch('/api/admin/submissions', {
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
+        credentials: 'same-origin',
+        headers: adminAuthHeaders(adminToken),
       });
       const data = await res.json();
 
@@ -130,7 +145,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
     setPdfError(null);
     try {
       const res = await fetch(`/api/support-letter/${encodeURIComponent(item.id || item.refNumber)}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'same-origin',
+        headers: adminAuthHeaders(token),
       });
       if (!res.ok) {
         setPdfError('PDF документът не може да се отвори. Моля, опитайте отново.');
@@ -144,7 +160,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
       setPdfError('PDF документът не може да се отвори. Моля, опитайте отново.');
     }
@@ -157,9 +173,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
     try {
       const res = await fetch(path, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${adminToken}`,
+          ...adminAuthHeaders(adminToken),
         },
         body: JSON.stringify(body),
       });

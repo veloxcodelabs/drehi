@@ -952,22 +952,58 @@ function generateAdminToken(password: string): string {
   return crypto.createHmac('sha256', password).update('msl-loi-admin-auth-salt').digest('hex');
 }
 
+const ADMIN_COOKIE = 'msl_admin';
+
+function headerText(req: Request, name: string): string {
+  const value = req.headers[name];
+  if (Array.isArray(value)) return value[0] || '';
+  return typeof value === 'string' ? value : '';
+}
+
+function readCookie(req: Request, name: string): string {
+  const header = headerText(req, 'cookie');
+  if (!header) return '';
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(eq + 1).trim());
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
+
+function tokensMatch(presented: string, valid: string): boolean {
+  const left = Buffer.from(presented);
+  const right = Buffer.from(valid);
+  if (left.length === 0 || left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+}
+
+/** Session token from the header the admin page sends, or the login cookie. Never from the URL. */
+function presentedAdminToken(req: Request): string {
+  const authorization = headerText(req, 'authorization');
+  if (/^bearer\s+/i.test(authorization)) return authorization.replace(/^bearer\s+/i, '').trim();
+  const headerToken = headerText(req, 'x-admin-token').trim();
+  if (headerToken) return headerToken;
+  return readCookie(req, ADMIN_COOKIE);
+}
+
+function adminCookie(token: string, maxAgeSeconds: number): string {
+  const secure = process.env.VERCEL ? '; Secure' : '';
+  return `${ADMIN_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax${secure}`;
+}
+
 function verifyAdmin(req: Request): boolean {
-  const authHeader = req.headers.authorization;
   const adminPass = getAdminPassword();
   const validToken = generateAdminToken(adminPass);
+  if (tokensMatch(presentedAdminToken(req), validToken)) return true;
 
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7).trim();
-    if (token === validToken) return true;
-  }
-
-  const customHeader = req.headers['x-admin-password'];
-  if (customHeader && String(customHeader) === adminPass) {
-    return true;
-  }
-
-  return false;
+  const passwordHeader = headerText(req, 'x-admin-password');
+  return Boolean(passwordHeader) && passwordHeader === adminPass;
 }
 
 // POST /api/admin/login - Authenticate with ADMIN_PASSWORD
@@ -980,7 +1016,13 @@ app.post('/api/admin/login', (req: Request, res: Response) => {
   }
 
   const token = generateAdminToken(expectedPassword);
+  res.setHeader('Set-Cookie', adminCookie(token, 60 * 60 * 12));
   return res.json({ success: true, token });
+});
+
+app.post('/api/admin/logout', (_req: Request, res: Response) => {
+  res.setHeader('Set-Cookie', adminCookie('', 0));
+  return res.json({ success: true });
 });
 
 // GET /api/admin/verify - Verify session token
