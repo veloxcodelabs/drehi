@@ -351,4 +351,21 @@ test('server enforces try limits, refunds failures, and keeps the API token serv
   const afterSignal = await auth('junona');
   assert.equal(afterSignal.data.used, 1);
   assert.equal(afterSignal.data.remaining, 2);
+
+  await reset('loreen');
+  const embedded = await realFetch(`${base}/api/tasks/create`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-access-code': 'loreen' },
+    body: JSON.stringify({
+      version: 'test-version',
+      input: { prompt: 'lookbook', img_urls: ['data:image/jpeg;base64,AAAA', 'https://example.com/model-photo.png'] },
+      accessCode: 'loreen',
+    }),
+  });
+  const embeddedData = await embedded.json();
+  assert.equal(embedded.status, 413);
+  assert.match(embeddedData.error, /твърде голяма/);
+  const loreen = await auth('loreen');
+  assert.equal(loreen.data.remaining, 3);
+  assert.equal(loreen.data.used, 0);
 });
