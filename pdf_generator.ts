@@ -20,7 +20,7 @@ export interface LetterParticipantData {
  */
 export const BENEFICIARY_COMPANY = {
   nameBg: '„Здравец ХМ“ ЕООД',
-  nameEn: 'Zdravets HM EOOD',
+  nameEn: 'Zdravets NH EOOD',
   uic: '206412964',
   addressBg: 'гр. София 1505, ул. „Царичина“ № 11',
   addressEn: '11 Tsarichina St., 1505 Sofia, Bulgaria',
