@@ -6,6 +6,10 @@
       "destination": "/api/auth-code.ts"
     },
     {
+      "source": "/api/upload",
+      "destination": "/api/upload.ts"
+    },
+    {
       "source": "/api/config",
       "destination": "/api/config.ts"
     },
