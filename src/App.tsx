@@ -15,6 +15,7 @@ import {
   createTask,
   getTask,
   validateAccessCode,
+  ApiRequestError,
 } from './lib/api';
 import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
@@ -160,7 +161,7 @@ export default function App() {
         if (status.valid) {
           loadCodeHistory(status.code);
         } else {
-          setCodeErrorMessage('Невалиден код за достъп. Пишете ни на info@martitony.com');
+          setCodeErrorMessage(status.message || 'Невалиден код за достъп. Пишете ни на info@martitony.com');
           setHistory([]);
           setCurrentTask(null);
         }
@@ -196,7 +197,7 @@ export default function App() {
       setGeneralError(null);
       await loadCodeHistory(result.code);
     } else {
-      setCodeErrorMessage('Невалиден код за достъп. Пишете ни на info@martitony.com');
+      setCodeErrorMessage(result.message || 'Невалиден код за достъп. Пишете ни на info@martitony.com');
       setHistory([]);
       setCurrentTask(null);
     }
@@ -215,8 +216,25 @@ export default function App() {
     };
   }, []);
 
-  // Poll task status until complete or failed
-  const startPolling = (taskId: string, initialTask: GenerationTask) => {
+  const applyServerBalance = (partial: {
+    remaining?: number;
+    dailyRemaining?: number;
+    dailyLimitReached?: boolean;
+    used?: number;
+    totalAllowed?: number;
+  }) => {
+    setAccessStatus((prev) => ({
+      ...prev,
+      ...(typeof partial.remaining === 'number' ? { remaining: partial.remaining } : {}),
+      ...(typeof partial.dailyRemaining === 'number' ? { dailyRemaining: partial.dailyRemaining } : {}),
+      ...(typeof partial.dailyLimitReached === 'boolean' ? { dailyLimitReached: partial.dailyLimitReached } : {}),
+      ...(typeof partial.used === 'number' ? { used: partial.used } : {}),
+      ...(typeof partial.totalAllowed === 'number' ? { totalAllowed: partial.totalAllowed } : {}),
+    }));
+  };
+
+  // Poll task status until complete or failed. Remaining tries are copied from the server payload.
+  const startPolling = (taskId: string, initialTask: GenerationTask, code: string) => {
     if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
     if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
 
@@ -227,9 +245,17 @@ export default function App() {
 
     const poll = async () => {
       try {
-        const result = await getTask(taskId);
+        const result = await getTask(taskId, code);
 
         if (!result) return;
+
+        if (typeof result.remaining === 'number') {
+          applyServerBalance({
+            remaining: result.remaining,
+            dailyRemaining: result.dailyRemaining,
+            dailyLimitReached: result.dailyLimitReached,
+          });
+        }
 
         const isFinished = result.status === 'succeeded' || result.status === 'failed' || result.status === 'canceled';
 
@@ -250,20 +276,24 @@ export default function App() {
           if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
           setIsGenerating(false);
 
+          if (code) {
+            validateAccessCode(code).then((st) => {
+              if (st.valid) setAccessStatus(st);
+            });
+          }
+
+          if (result.status !== 'succeeded' && result.error) {
+            setGeneralError(result.error);
+          }
+
           if (result.status === 'succeeded') {
-            // Re-validate code balance
-            if (accessStatus.code) {
-              validateAccessCode(accessStatus.code).then((st) => {
-                setAccessStatus(st);
-              });
-            }
 
             // Update history scoped to active code
             setHistory((prev) => {
               const filtered = prev.filter((t) => t.id !== updatedTask.id);
               const updated = [updatedTask, ...filtered];
-              if (accessStatus.code) {
-                saveStoredHistory(accessStatus.code, updated);
+              if (code) {
+                saveStoredHistory(code, updated);
               }
               return updated;
             });
@@ -271,6 +301,19 @@ export default function App() {
         }
       } catch (err: any) {
         console.warn('Polling notice:', err);
+        if (err instanceof ApiRequestError) {
+          if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+          if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+          setIsGenerating(false);
+          setGeneralError(err.message);
+          if (typeof err.remaining === 'number') {
+            applyServerBalance({ remaining: err.remaining });
+          } else if (code) {
+            validateAccessCode(code).then((st) => {
+              if (st.valid) setAccessStatus(st);
+            });
+          }
+        }
       }
     };
 
@@ -348,10 +391,34 @@ export default function App() {
       };
 
       setCurrentTask(newTask);
-      startPolling(res.taskId, newTask);
+      if (typeof res.remaining === 'number') {
+        applyServerBalance({
+          remaining: res.remaining,
+          dailyRemaining: res.dailyRemaining,
+          dailyLimitReached: res.dailyLimitReached,
+        });
+      }
+      startPolling(res.taskId, newTask, accessStatus.code);
     } catch (err: any) {
       console.warn('Generation task error:', err);
       setIsGenerating(false);
+      if (err instanceof ApiRequestError) {
+        if (typeof err.remaining === 'number') {
+          applyServerBalance({
+            remaining: err.remaining,
+            dailyRemaining: err.dailyRemaining,
+            dailyLimitReached: err.dailyLimitReached,
+            used: err.used,
+            totalAllowed: err.totalAllowed,
+          });
+        }
+        setGeneralError(err.message);
+        if (err.code === 'NO_TRIES') {
+          setSupportLetterImage(currentTask?.outputUrls?.[0]);
+          setSupportLetterOpen(true);
+        }
+        return;
+      }
       setGeneralError(err.message || 'Възникна грешка при стартиране на генерацията.');
     }
   };
