@@ -101,13 +101,11 @@ export default function App() {
   // Execution & Task State
   const [currentTask, setCurrentTask] = useState<GenerationTask | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [history, setHistory] = useState<GenerationTask[]>([]);
 
   // Polling ref
   const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const elapsedTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load history strictly scoped to the active access code
   const loadCodeHistory = async (validCode: string) => {
@@ -213,7 +211,6 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-      if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
     };
   }, []);
 
@@ -237,12 +234,6 @@ export default function App() {
   // Poll task status until complete or failed. Remaining tries are copied from the server payload.
   const startPolling = (taskId: string, initialTask: GenerationTask, code: string) => {
     if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-    if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
-
-    setElapsedSeconds(0);
-    elapsedTimerRef.current = setInterval(() => {
-      setElapsedSeconds((sec) => sec + 1);
-    }, 1000);
 
     const poll = async () => {
       try {
@@ -274,7 +265,6 @@ export default function App() {
 
         if (isFinished) {
           if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-          if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
           setIsGenerating(false);
 
           if (code) {
@@ -304,7 +294,6 @@ export default function App() {
         console.warn('Polling notice:', err);
         if (err instanceof ApiRequestError) {
           if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-          if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
           setIsGenerating(false);
           setGeneralError(err.message);
           if (typeof err.remaining === 'number') {
@@ -585,9 +574,6 @@ export default function App() {
                     <TaskViewer
                       taskId={currentTask.id}
                       status={currentTask.status}
-                      elapsedSeconds={elapsedSeconds}
-                      totalTime={currentTask.totalTime}
-                      predictTime={currentTask.predictTime}
                       error={currentTask.error}
                       isSimulated={currentTask.isSimulated}
                       onRetry={handleGenerate}
