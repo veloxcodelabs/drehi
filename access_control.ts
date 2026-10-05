@@ -90,6 +90,12 @@ const RAW_VALID_CODES: string[] = [
   'byllu', 'shushulka', 'areal', 'obui', 'viona', 'shopzone',
   'kompass', 'lory', 'nadiapetrova', 'complexbg', 'sisibg', 'gstorefashion',
   'hugsy', 'affect', 'outstore',
+  'andrews', 'mikena', 'tergan', 'misskapriz', 'vilishop', 'brute',
+  'ivstyle', 'ilonfashion', 'maximod', 'natalileather', 'stylezone', 'streetwearbg',
+  'sportmag', 'zoyafashion', 'hellokids', 'carnivalkids', 'extravagance', 'gabina',
+  'unibrands', 'xcess', 'allshoes', 'gentlemanstore', 'jioro', 'andipandi',
+  'rachbaby', 'jaco', 'sportrespect', 'tochici', 'thestore', 'izamama',
+  'didis', 'udobniobuvki', 'zebra', 'bgbrands',
 ];
 
 const KNOWN_CODES = new Set(RAW_VALID_CODES.map((code) => code.toLowerCase()));
