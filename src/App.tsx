@@ -594,7 +594,7 @@ export default function App() {
                     />
                   )}
 
-                  {/* Viewport: Before/After Pairs in empty state & generated artwork */}
+                  {/* Viewport: generated artwork */}
                   <div className="min-h-[500px]">
                     <ResultViewport
                       currentTask={currentTask}
