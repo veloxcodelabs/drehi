@@ -72,6 +72,12 @@ const RAW_VALID_CODES: string[] = [
   'mdclothing', 'mire', 'ladybg', 'uniquebg', 'funkykids', 'bozovstil',
   'yogavibe', 'dress4less', 'dika', 'jnsecret', 'legionk', 'varriosport',
   'zarena', 'reluxeroom',
+  'gaytan', 'elizabet', 'egoboutique', 'tonylans', 'vizia', 'ingiliz',
+  'paramidonna', 'monadiki', 'karanova', 'inaassa', 'mojoleather', 'abovetherest',
+  'genezis', 'mamomoya', 'goodfashion', 'revue5', 'viasaborna', 'pepina',
+  'atelierivoire', 'zappy', 'amirass', 'vulshebnitsa', 'ivorybridal', 'beliva',
+  'azuri', 'odeta', 'effetti', 'angelwings', 'popijami', 'magim',
+  'brutale', 'zerofit', 'missqueen', 'ygg',
 ];
 
 const KNOWN_CODES = new Set(RAW_VALID_CODES.map((code) => code.toLowerCase()));
