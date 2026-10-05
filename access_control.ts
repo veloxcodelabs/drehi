@@ -60,6 +60,12 @@ const RAW_VALID_CODES: string[] = [
   'theweekend', 'valenti', 'fabele', 'ciavore', 'nextlevel', 'modadrehi',
   'merinossa', 'dfashion', 'fashionwoman', 'metamorphoza', 'linenfairytales', 'theamu',
   'pletivo', 'gangbg', 'mdr24', 'bulgarskidrehi', 'activewear',
+  'shefashion', 'moonstone', 'vanyafashion', 'studiomarcia', 'shtampi', 'motivarto',
+  'edinstvena', 'yovini', 'lememe', 'noonebrand', 'ulle', 'bossburg',
+  'gabymoda', 'boutiquesette', 'movomo', 'minimalbg', 'pinklady', 'alexandraitaly',
+  'odejdi', 'askia', 'shevicasvet', 'politass', 'indigofashion', 'hrisima',
+  'dizi', 'laralux', 'gazela', '3dogs', 'modero', 'corsoitalia',
+  'moodtop', 'kimswear', 'shevicabg', 'pepeboutique', 'italiana',
 ];
 
 const KNOWN_CODES = new Set(RAW_VALID_CODES.map((code) => code.toLowerCase()));
