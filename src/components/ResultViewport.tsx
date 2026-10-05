@@ -12,34 +12,6 @@ interface ResultViewportProps {
   onRequestSupportLetter?: (imageUrl?: string) => void;
 }
 
-// Exact Before/After pairs (garment photo -> model wearing it)
-const BEFORE_AFTER_PAIRS = [
-  {
-    id: 'pair-blazer',
-    title: 'Ленено сако',
-    garmentImg: 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?auto=format&fit=crop&w=600&q=80',
-    garmentLabel: 'Снимка на закачалка',
-    modelImg: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=600&q=80',
-    modelLabel: 'Облечено от студиен модел',
-  },
-  {
-    id: 'pair-dress',
-    title: 'Елегантна рокля',
-    garmentImg: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?auto=format&fit=crop&w=600&q=80',
-    garmentLabel: 'Снимка на щендер',
-    modelImg: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=600&q=80',
-    modelLabel: 'Облечена от студиен модел',
-  },
-  {
-    id: 'pair-knit',
-    title: 'Плетен пуловер',
-    garmentImg: 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&w=600&q=80',
-    garmentLabel: 'Снимка на равна повърхност',
-    modelImg: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=600&q=80',
-    modelLabel: 'Облечен от студиен модел',
-  },
-];
-
 export const ResultViewport: React.FC<ResultViewportProps> = ({
   currentTask,
   isGenerating,
@@ -62,89 +34,8 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
     setTimeout(() => setCopiedUrl(false), 2000);
   };
 
-  // Empty state: Before/After comparison pairs
   if (!currentTask && !isGenerating) {
-    return (
-      <div className="h-full min-h-[480px] rounded-xl border border-neutral-200 bg-white flex flex-col justify-between p-5 sm:p-6 shadow-xs">
-        <div>
-          <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-neutral-900">
-              Примери: Преди и След
-            </span>
-            <span className="text-xs text-neutral-400">
-              Дреха → Модел
-            </span>
-          </div>
-
-          <p className="text-xs text-neutral-500 mt-3 leading-relaxed">
-            Вижте как обикновена продуктова снимка на дреха се визуализира реалистично върху студиен модел:
-          </p>
-
-          {/* 3 Before/After Pairs */}
-          <div className="my-5 space-y-4">
-            {BEFORE_AFTER_PAIRS.map((pair) => (
-              <div
-                key={pair.id}
-                className="p-3 rounded-xl border border-neutral-200 bg-neutral-50/50 hover:bg-neutral-50 transition-colors"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-neutral-900">
-                    {pair.title}
-                  </span>
-                  <span className="text-[11px] text-neutral-400 flex items-center gap-1">
-                    <span>Преди</span>
-                    <ArrowRight className="w-3 h-3 text-neutral-400" />
-                    <span>След</span>
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  {/* Before: Garment photo */}
-                  <div className="space-y-1">
-                    <div className="aspect-[3/4] rounded-lg overflow-hidden bg-neutral-200 border border-neutral-200 relative group">
-                      <img
-                        src={pair.garmentImg}
-                        alt={pair.garmentLabel}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded bg-black/60 text-white text-[10px] font-medium">
-                        Дреха
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-neutral-500 line-clamp-1">
-                      {pair.garmentLabel}
-                    </p>
-                  </div>
-
-                  {/* After: Model wearing it */}
-                  <div className="space-y-1">
-                    <div className="aspect-[3/4] rounded-lg overflow-hidden bg-neutral-200 border border-neutral-200 relative group">
-                      <img
-                        src={pair.modelImg}
-                        alt={pair.modelLabel}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded bg-emerald-700 text-white text-[10px] font-medium">
-                        Модел
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-neutral-500 line-clamp-1">
-                      {pair.modelLabel}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="border-t border-neutral-100 pt-3 text-xs text-neutral-500 flex items-center justify-between">
-          <span>Качете дреха вляво, изберете модел и натиснете <strong>Генерирай</strong>.</span>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // A rejected try-on keeps the error in the status card. Don't present it as a finished lookbook.
