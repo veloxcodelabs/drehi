@@ -1,13 +1,10 @@
 import React from 'react';
-import { Loader2, CheckCircle2, AlertTriangle, XCircle, Clock } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
 import { TaskStatus } from '../types';
 
 interface TaskViewerProps {
   taskId: string;
   status: TaskStatus;
-  elapsedSeconds: number;
-  totalTime?: number;
-  predictTime?: number;
   error?: string | null;
   isSimulated?: boolean;
   onRetry?: () => void;
@@ -15,7 +12,6 @@ interface TaskViewerProps {
 
 export const TaskViewer: React.FC<TaskViewerProps> = ({
   status,
-  elapsedSeconds,
   error,
   onRetry,
 }) => {
@@ -68,16 +64,9 @@ export const TaskViewer: React.FC<TaskViewerProps> = ({
 
   return (
     <div className={`p-4 rounded-xl border ${details.bg} transition-all space-y-2.5 shadow-xs`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {details.icon}
-          <span className={`text-xs font-semibold ${details.color}`}>{details.label}</span>
-        </div>
-
-        <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-          <Clock className="w-3.5 h-3.5 text-neutral-400" />
-          <span>{elapsedSeconds} сек.</span>
-        </div>
+      <div className="flex items-center gap-2">
+        {details.icon}
+        <span className={`text-xs font-semibold ${details.color}`}>{details.label}</span>
       </div>
 
       <p className="text-xs text-neutral-600 leading-relaxed">{details.description}</p>
