@@ -60,11 +60,15 @@ export interface UsageBackend {
   saveSizeChart(code: string, chart: SizeChart | null): Promise<SizeChart | null>;
 }
 
-function selectMode(): 'file' | 'firestore' {
+export function selectMode(): 'file' | 'firestore' {
   if (process.env.USAGE_STORE === 'file') return 'file';
   if (process.env.USAGE_STORE === 'firestore') return 'firestore';
   if (process.env.VERCEL || process.env.FIREBASE_SERVICE_ACCOUNT) return 'firestore';
   return 'file';
+}
+
+export function isFirestoreMode(): boolean {
+  return selectMode() === 'firestore';
 }
 
 function normalizeState(raw: any): UsageState {
@@ -238,7 +242,7 @@ function readDatabaseId(): string {
 
 let firestoreDb: any = null;
 
-async function getFirestoreDb(): Promise<any> {
+export async function getFirestoreDb(): Promise<any> {
   if (firestoreDb) return firestoreDb;
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT || '';
   if (!raw.trim()) {

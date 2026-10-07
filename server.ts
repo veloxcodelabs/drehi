@@ -39,6 +39,11 @@ import {
   withGarmentRoles,
 } from './garment_check.js';
 import { applyFitGuidanceToPrompt } from './fit_guidance.js';
+import {
+  savePersistentImage,
+  getPersistentImage,
+  checkPersistentImageExists,
+} from './persistent_image_store.js';
 
 dotenv.config();
 
@@ -103,8 +108,52 @@ function getExpiredLookbookPlaceholderSvg(): string {
 
 // Serve uploaded user files
 app.use('/uploads', express.static(uploadsDir));
-app.use('/uploads', (_req, res) => {
-  res.status(404).send('Upload not found');
+// Check persistent storage for /uploads/:filename when not found on local disk
+app.get('/uploads/:filename', async (req: Request, res: Response, next) => {
+  try {
+    const rawFilename = req.params.filename || '';
+    const localFile = path.join(uploadsDir, rawFilename);
+    if (fs.existsSync(localFile)) {
+      return next();
+    }
+    const id = rawFilename.replace(/\.[a-zA-Z0-9]+$/, '');
+    const img = await getPersistentImage(id);
+    if (img) {
+      res.setHeader('Content-Type', img.mime || 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      return res.send(img.buffer);
+    }
+  } catch (err) {
+    console.warn('[Uploads Route] Fallback check error:', err);
+  }
+  return res.status(404).send('Upload not found');
+});
+
+// Dedicated persistent temporary image serving across serverless instances
+app.get('/api/temp-image/:id', async (req: Request, res: Response) => {
+  try {
+    const rawId = req.params.id || '';
+    const id = rawId.replace(/\.[a-zA-Z0-9]+$/, '');
+    const img = await getPersistentImage(id);
+    if (!img) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(410).json({ error: 'Image expired or missing from persistent storage', code: 'EXPIRED' });
+    }
+
+    res.setHeader('Content-Type', img.mime || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    if (req.query.download === 'true') {
+      res.setHeader('Content-Disposition', `attachment; filename="${img.filename || 'image.jpg'}"`);
+    }
+    return res.send(img.buffer);
+  } catch (err: any) {
+    console.error('[Temp Image Route] Error serving persistent image:', err);
+    return res.status(500).json({ error: 'Error reading image' });
+  }
 });
 
 // In-memory store for simulated demo tasks
