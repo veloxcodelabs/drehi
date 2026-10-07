@@ -4,6 +4,7 @@ import {
   type UsageBackend,
 } from './usage_store.js';
 import type { Balance, RecentTask } from './usage_logic.js';
+import type { SizeChart } from './fit_guidance.js';
 
 /**
  * Server-side invite limits.
@@ -177,6 +178,7 @@ function toPublicStatus(balance: Balance) {
     used: balance.used,
     dailyRemaining: balance.dailyRemaining,
     dailyLimitReached: balance.dailyLimitReached,
+    sizeChart: balance.sizeChart ?? null,
   };
 }
 
@@ -191,6 +193,7 @@ export async function checkAccessCode(rawCode?: string | null) {
       used: 0,
       dailyRemaining: 0,
       dailyLimitReached: false,
+      sizeChart: null,
     };
   }
   const balance = await backend().check(code, isKnownAccessCode(code));
@@ -455,4 +458,19 @@ export async function resetCodeUsage(rawCode: string) {
   };
 }
 
+export async function getSizeChartForCode(rawCode?: string | null): Promise<SizeChart | null> {
+  const code = sanitizeCode(rawCode);
+  if (!code) return null;
+  return backend().getSizeChart(code);
+}
+
+export async function saveSizeChartForCode(rawCode: string, chart: SizeChart | null): Promise<SizeChart | null> {
+  const code = sanitizeCode(rawCode);
+  if (!code) {
+    throw new UsageStoreError('Missing access code');
+  }
+  return backend().saveSizeChart(code, chart);
+}
+
 export { UsageStoreError };
+

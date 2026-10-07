@@ -18,6 +18,8 @@ import {
   isTaskOwnedByCode,
   addCreditsToCode,
   resetCodeUsage,
+  getSizeChartForCode,
+  saveSizeChartForCode,
   UsageStoreError,
 } from './access_control.js';
 import { processSupportLetter, loadSubmissionPdf, getAllSubmissions } from './support_letter_service.js';
@@ -36,6 +38,7 @@ import {
   upstreamSignalsUnappliedGarment,
   withGarmentRoles,
 } from './garment_check.js';
+import { applyFitGuidanceToPrompt } from './fit_guidance.js';
 
 dotenv.config();
 
@@ -585,6 +588,19 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
       processedInput.target_image = await ensurePublicImageUrl(processedInput.target_image);
     }
 
+    const chosenSize = req.body?.chosenSize || input?.chosenSize;
+    const customerMeasurements = req.body?.customerMeasurements || input?.customerMeasurements;
+    const garmentSizeChart = req.body?.garmentSizeChart || input?.garmentSizeChart;
+    if (chosenSize) {
+      const chart = garmentSizeChart || (await getSizeChartForCode(accessCode));
+      processedInput.prompt = applyFitGuidanceToPrompt(
+        processedInput.prompt,
+        chart,
+        chosenSize,
+        customerMeasurements
+      );
+    }
+
     const referenceUrls = Array.isArray(processedInput.img_urls)
       ? processedInput.img_urls.filter((url: unknown) => typeof url === 'string' && url)
       : [];
@@ -1109,6 +1125,59 @@ app.get('/api/admin/codes/status', async (req: Request, res: Response) => {
     return res.status(503).json({ error: STORAGE_PUBLIC_MESSAGE });
   }
 });
+
+// GET /api/size-chart?k=code
+app.get('/api/size-chart', async (req: Request, res: Response) => {
+  try {
+    const code = sanitizeCode((req.query.k as string) || (req.headers['x-access-code'] as string));
+    if (!code) {
+      return res.status(400).json({ error: 'Missing access code', sizeChart: null });
+    }
+    const sizeChart = await getSizeChartForCode(code);
+    return res.json({ success: true, code, sizeChart });
+  } catch (error: any) {
+    console.error('[Access] size-chart failed:', error);
+    return res.status(500).json({ error: 'Failed to load size chart' });
+  }
+});
+
+// GET /api/admin/size-chart?code=...
+app.get('/api/admin/size-chart', async (req: Request, res: Response) => {
+  if (!verifyAdmin(req)) {
+    return res.status(401).json({ error: 'Неоторизиран достъп.' });
+  }
+  const code = sanitizeCode(req.query.code as string);
+  if (!code) {
+    return res.status(400).json({ error: 'Моля, въведете код.' });
+  }
+  try {
+    const sizeChart = await getSizeChartForCode(code);
+    return res.json({ success: true, code, sizeChart });
+  } catch (error: any) {
+    console.error('[Admin] get size chart failed:', error);
+    return res.status(500).json({ error: error.message || 'Грешка при зареждане на таблицата с размери.' });
+  }
+});
+
+// POST /api/admin/size-chart
+app.post('/api/admin/size-chart', async (req: Request, res: Response) => {
+  if (!verifyAdmin(req)) {
+    return res.status(401).json({ error: 'Неоторизиран достъп.' });
+  }
+  const { code: rawCode, sizeChart } = req.body || {};
+  const code = sanitizeCode(rawCode);
+  if (!code) {
+    return res.status(400).json({ error: 'Моля, въведете валиден код.' });
+  }
+  try {
+    const saved = await saveSizeChartForCode(code, sizeChart);
+    return res.json({ success: true, code, sizeChart: saved });
+  } catch (error: any) {
+    console.error('[Admin] save size chart failed:', error);
+    return res.status(500).json({ error: error.message || 'Грешка при запазване на таблицата с размери.' });
+  }
+});
+
 
 
 

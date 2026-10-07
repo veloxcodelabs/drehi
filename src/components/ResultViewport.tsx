@@ -176,6 +176,11 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Plain note under the result */}
+          <p className="text-center text-[11px] text-neutral-500 pt-1 leading-relaxed">
+            Изображението е създадено с AI и показва как приблизително би изглеждала дрехата върху Вас. За размера се водете по таблицата с мерки.
+          </p>
         </div>
       )}
 

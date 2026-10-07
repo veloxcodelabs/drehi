@@ -6,6 +6,8 @@
  * and is counted only when the generation succeeds. Failures release the hold.
  */
 
+import type { SizeChart } from './fit_guidance.js';
+
 export const DEFAULT_TRIES = 3;
 export const DAILY_CAP = 300;
 export const HOLD_TTL_MS = 20 * 60 * 1000;
@@ -38,6 +40,7 @@ export interface CodeDoc {
   used: number;
   holds: Record<string, Hold>;
   recentTasks: RecentTask[];
+  sizeChart?: SizeChart | null;
 }
 
 export interface DayDoc {
@@ -71,6 +74,7 @@ export interface Balance {
   dailyRemaining: number;
   dailyLimitReached: boolean;
   activeHolds: number;
+  sizeChart?: SizeChart | null;
 }
 
 export type DenyReason = 'invalid' | 'no_tries' | 'daily';
@@ -118,6 +122,7 @@ export function invalidBalance(code: string): Balance {
     dailyRemaining: 0,
     dailyLimitReached: false,
     activeHolds: 0,
+    sizeChart: null,
   };
 }
 
@@ -135,7 +140,7 @@ function ensureDay(state: UsageState, dayKey: string): DayDoc {
 }
 
 function blankCode(totalAllowed: number): CodeDoc {
-  return { totalAllowed, used: 0, holds: {}, recentTasks: [] };
+  return { totalAllowed, used: 0, holds: {}, recentTasks: [], sizeChart: null };
 }
 
 /** Drop expired holds from one code. Also drops them from any loaded day docs. */
@@ -193,6 +198,7 @@ function balanceFor(
     dailyRemaining,
     dailyLimitReached: day.count + dailyActive >= dailyCap,
     activeHolds,
+    sizeChart: codeDoc?.sizeChart ?? null,
   };
 }
 
@@ -496,3 +502,23 @@ export function ownerOfTask(state: UsageState, taskId: string): string | null {
   if (!reservationId) return null;
   return state.reservations[reservationId]?.code || null;
 }
+
+export function applySaveSizeChart(
+  state: UsageState,
+  code: string,
+  chart: SizeChart | null
+): { state: UsageState; sizeChart: SizeChart | null } {
+  const next = cloneState(state);
+  const current = next.codes[code] || blankCode(DEFAULT_TRIES);
+  current.sizeChart = chart;
+  next.codes[code] = current;
+  return { state: next, sizeChart: chart };
+}
+
+export function applyGetSizeChart(
+  state: UsageState,
+  code: string
+): SizeChart | null {
+  return state.codes[code]?.sizeChart ?? null;
+}
+

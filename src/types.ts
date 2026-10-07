@@ -1,5 +1,36 @@
 export type TaskStatus = 'starting' | 'processing' | 'succeeded' | 'failed' | 'canceled';
 
+export type FitType = 'slim' | 'regular' | 'relaxed';
+
+export interface SizeRow {
+  size: string;
+  bust: number;
+  waist: number;
+  hips: number;
+  length?: number;
+}
+
+export interface SizeChart {
+  fitType: FitType;
+  rows: SizeRow[];
+  updatedAt?: number;
+}
+
+export interface CustomerMeasurements {
+  height?: number;
+  bust?: number;
+  waist?: number;
+  hips?: number;
+}
+
+export interface SizeRecommendation {
+  recommendedSize: string | null;
+  explanationBg: string;
+  smallerSize?: string;
+  tightestZoneBg?: string;
+  isOverMax?: boolean;
+}
+
 export interface TaskApiResult {
   task_id: string;
   user_id?: number;
@@ -28,6 +59,7 @@ export interface AccessCodeStatus {
   dailyRemaining: number;
   dailyLimitReached: boolean;
   message?: string;
+  sizeChart?: SizeChart | null;
 }
 
 export interface GenerationTask {

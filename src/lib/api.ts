@@ -1,4 +1,4 @@
-import { GenerationTask, TaskApiResult, AccessCodeStatus } from '../types';
+import { GenerationTask, TaskApiResult, AccessCodeStatus, SizeChart } from '../types';
 import { prepareImageFile } from './prepareImage';
 import {
   IMAGE_TOO_LARGE_MESSAGE,
@@ -183,6 +183,7 @@ const emptyAccessStatus = (code = ''): AccessCodeStatus => ({
   used: 0,
   dailyRemaining: 0,
   dailyLimitReached: false,
+  sizeChart: null,
 });
 
 /**
@@ -334,3 +335,55 @@ export async function submitSupportLetter(
     throw new ApiRequestError('Връзката със сървъра не успя. Моля, опитайте отново.');
   }
 }
+
+// Fetch size chart for customer code
+export async function getSizeChart(code: string): Promise<SizeChart | null> {
+  const cleanCode = (code || '').trim().toLowerCase();
+  if (!cleanCode) return null;
+  try {
+    const res = await fetch(`/api/size-chart?k=${encodeURIComponent(cleanCode)}`, { cache: 'no-store' });
+    const data = await readJsonBody(res);
+    return data?.sizeChart || null;
+  } catch {
+    return null;
+  }
+}
+
+// Admin: fetch size chart for any code
+export async function getSizeChartAdmin(code: string, adminToken: string): Promise<SizeChart | null> {
+  const cleanCode = (code || '').trim().toLowerCase();
+  if (!cleanCode) return null;
+  const res = await fetch(`/api/admin/size-chart?code=${encodeURIComponent(cleanCode)}`, {
+    headers: {
+      Authorization: `Bearer ${adminToken}`,
+      'X-Admin-Token': adminToken,
+    },
+    cache: 'no-store',
+  });
+  const data = await readJsonBody(res);
+  if (!res.ok) throw new Error(data?.error || 'Грешка при зареждане на таблицата.');
+  return data?.sizeChart || null;
+}
+
+// Admin: save size chart for code
+export async function saveSizeChartAdmin(
+  code: string,
+  sizeChart: SizeChart | null,
+  adminToken: string
+): Promise<SizeChart | null> {
+  const cleanCode = (code || '').trim().toLowerCase();
+  if (!cleanCode) throw new Error('Моля, въведете код.');
+  const res = await fetch('/api/admin/size-chart', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+      'X-Admin-Token': adminToken,
+    },
+    body: JSON.stringify({ code: cleanCode, sizeChart }),
+  });
+  const data = await readJsonBody(res);
+  if (!res.ok) throw new Error(data?.error || 'Грешка при запазване на таблицата.');
+  return data?.sizeChart || null;
+}
+

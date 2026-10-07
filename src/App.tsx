@@ -5,7 +5,7 @@ import {
   AlertCircle,
   Mail,
 } from 'lucide-react';
-import { GenerationTask, UploadedImage, AccessCodeStatus } from './types';
+import { GenerationTask, UploadedImage, AccessCodeStatus, CustomerMeasurements } from './types';
 import {
   getStoredSimulateMode,
   getStoredHistory,
@@ -18,7 +18,8 @@ import {
   ApiRequestError,
 } from './lib/api';
 import { Header } from './components/Header';
-import { ImageUploader } from './components/ImageUploader';
+import { GarmentSideSection } from './components/GarmentSideSection';
+import { PersonSideSection } from './components/PersonSideSection';
 import { ModelParameters } from './components/ModelParameters';
 import { TaskViewer } from './components/TaskViewer';
 import { ResultViewport } from './components/ResultViewport';
@@ -27,6 +28,22 @@ import { ApiSettingsModal } from './components/ApiSettingsModal';
 import { InviteAccessGate } from './components/InviteAccessGate';
 import { SupportLetterModal } from './components/SupportLetterModal';
 import { AdminDashboard } from './components/AdminDashboard';
+import { CustomerMeasurementsForm } from './components/CustomerMeasurementsForm';
+import {
+  SizeChart,
+  DEFAULT_SAMPLE_SIZE_ROWS,
+  recommendSize,
+  applyFitGuidanceToPrompt,
+} from '../fit_guidance';
+import {
+  buildConsistencyCacheKey,
+  getCachedTryOnResult,
+  saveCachedTryOnResult,
+  getSavedGarmentTable,
+  saveGarmentTable,
+  getSavedBodyMeasurements,
+  saveBodyMeasurements,
+} from './lib/tryonStorage';
 
 const DEFAULT_GPT_VERSION = 'cce611c44553ba5f061813d75a1e5f93d8c901047528da275f667ebe7d784565';
 
@@ -97,6 +114,72 @@ export default function App() {
   const [aspectRatio, setAspectRatio] = useState('3:4');
   const [resolution, setResolution] = useState('2k');
   const [extraInstructions, setExtraInstructions] = useState('');
+
+  const DEFAULT_GARMENT_CHART: SizeChart = useMemo(() => ({
+    fitType: 'regular',
+    rows: DEFAULT_SAMPLE_SIZE_ROWS,
+  }), []);
+
+  // Garment side size chart (editable, saved per garment hash)
+  const [garmentChart, setGarmentChart] = useState<SizeChart>(() => DEFAULT_GARMENT_CHART);
+
+  // Body measurements (remembered in localStorage)
+  const [customerMeasurements, setCustomerMeasurements] = useState<CustomerMeasurements>(() => {
+    return getSavedBodyMeasurements();
+  });
+  const [chosenSize, setChosenSize] = useState<string | null>(null);
+  const [attemptedGenerate, setAttemptedGenerate] = useState(false);
+
+  // Consistency cache key tracker for current in-flight generation
+  const activeCacheKeyRef = useRef<string | null>(null);
+
+  // Handle garment image selection and restore saved table if exists
+  const handleGarmentImageChange = (img: UploadedImage | null) => {
+    setGarmentImage(img);
+    if (img) {
+      const saved = getSavedGarmentTable(img);
+      if (saved && Array.isArray(saved.rows) && saved.rows.length > 0) {
+        setGarmentChart(saved);
+      } else {
+        const base = (accessStatus.sizeChart && accessStatus.sizeChart.rows?.length) ? accessStatus.sizeChart : DEFAULT_GARMENT_CHART;
+        setGarmentChart(base);
+        saveGarmentTable(img, base);
+      }
+    }
+  };
+
+  const handleGarmentChartChange = (nextChart: SizeChart) => {
+    setGarmentChart(nextChart);
+    if (garmentImage) {
+      saveGarmentTable(garmentImage, nextChart);
+    }
+  };
+
+  const handleCustomerMeasurementsChange = (nextM: CustomerMeasurements) => {
+    setCustomerMeasurements(nextM);
+    saveBodyMeasurements(nextM);
+  };
+
+  // Recommendation calculation when both panels have measurements
+  const recommendation = useMemo(() => {
+    const { bust, waist, hips } = customerMeasurements;
+    const isBodyFilled =
+      typeof bust === 'number' && bust >= 50 && bust <= 250 &&
+      typeof waist === 'number' && waist >= 50 && waist <= 250 &&
+      typeof hips === 'number' && hips >= 50 && hips <= 250;
+
+    if (!isBodyFilled || !garmentChart.rows || garmentChart.rows.length === 0) {
+      return { recommendedSize: null, explanationBg: '' };
+    }
+    return recommendSize(garmentChart, customerMeasurements);
+  }, [garmentChart, customerMeasurements]);
+
+  // Preselect recommended size when recommendation is computed
+  useEffect(() => {
+    if (recommendation.recommendedSize) {
+      setChosenSize(recommendation.recommendedSize);
+    }
+  }, [recommendation.recommendedSize]);
 
   // Execution & Task State
   const [currentTask, setCurrentTask] = useState<GenerationTask | null>(null);
@@ -278,6 +361,10 @@ export default function App() {
           }
 
           if (result.status === 'succeeded') {
+            // Save to consistency cache (Requirement E)
+            if (activeCacheKeyRef.current) {
+              saveCachedTryOnResult(activeCacheKeyRef.current, updatedTask);
+            }
 
             // Update history scoped to active code
             setHistory((prev) => {
@@ -314,6 +401,7 @@ export default function App() {
 
   const handleGenerate = async () => {
     setGeneralError(null);
+    setAttemptedGenerate(true);
 
     if (!accessStatus.valid) {
       setGeneralError('Тази проба е само с покана. Пишете ни на info@martitony.com');
@@ -337,9 +425,41 @@ export default function App() {
       return;
     }
 
-    // Validation: Require model image
+    // Validation: Require person image
     if (!modelImage) {
-      setGeneralError('Моля, качете снимка на модел (Стъпка 2).');
+      setGeneralError('Моля, качете Ваша снимка (Стъпка 2).');
+      return;
+    }
+
+    // Validation: Require numeric body measurements 50-250 cm
+    const { height, bust, waist, hips } = customerMeasurements;
+    const isBad = (v?: number) => typeof v !== 'number' || isNaN(v) || v < 50 || v > 250;
+    if (isBad(height) || isBad(bust) || isBad(waist) || isBad(hips)) {
+      setGeneralError('Моля, попълнете вашите мерки в панела "Вашите мерки" (Ръст, Гърди, Талия и Ханш между 50 и 250 см).');
+      return;
+    }
+
+    // Chosen size resolution
+    const activeSize = chosenSize || recommendation.recommendedSize || garmentChart.rows[0]?.size || 'M';
+    if (!chosenSize) {
+      setChosenSize(activeSize);
+    }
+
+    // Consistency cache check (Requirement E):
+    // key = hash(person photo) + hash(garment image) + chosen size + body measurements
+    const cacheKey = buildConsistencyCacheKey(
+      modelImage,
+      garmentImage,
+      activeSize,
+      customerMeasurements
+    );
+    activeCacheKeyRef.current = cacheKey;
+
+    const cachedTask = getCachedTryOnResult(cacheKey);
+    if (cachedTask && Array.isArray(cachedTask.outputUrls) && cachedTask.outputUrls.length > 0) {
+      // If a result exists for the key, show it instead of generating again and don't consume a try!
+      setCurrentTask(cachedTask);
+      setIsGenerating(false);
       return;
     }
 
@@ -349,13 +469,23 @@ export default function App() {
     // Automatic boutique fashion prompt tailored for high-end lookbook
     const autoPrompt = `High-end fashion editorial lookbook photography of the exact uploaded garment worn by the model. Immaculate studio lighting, soft shadows, sharp textile drape, authentic fabric textures, luxury apparel catalogue photo. Neutral clean backdrop.`;
 
+    const finalPrompt = applyFitGuidanceToPrompt(
+      autoPrompt,
+      garmentChart,
+      activeSize,
+      customerMeasurements
+    );
+
     const requestPayloadInput = {
-      prompt: autoPrompt,
+      prompt: finalPrompt,
       extra_instructions: extraInstructions,
       // Order is the garment, then the person. The image API has no separate fields.
       img_urls: [garmentImage.url, modelImage.url],
       aspect_ratio: aspectRatio,
       resolution: resolution,
+      chosenSize: activeSize,
+      customerMeasurements: customerMeasurements,
+      garmentSizeChart: garmentChart,
     };
 
     try {
@@ -468,8 +598,8 @@ export default function App() {
               />
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                {/* Left Column: 3-Step Simplified Boutique Flow */}
-                <div className="lg:col-span-6 space-y-5">
+                {/* Left Column: Try-On Studio Panels */}
+                <div className="lg:col-span-7 xl:col-span-7 space-y-5">
                   {/* General Error Notice */}
                   {generalError && (
                     <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-3 shadow-xs">
@@ -481,15 +611,43 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* 3-Step Container */}
+                  {/* Studio Container */}
                   <div className="p-5 sm:p-6 rounded-2xl border border-neutral-200 bg-white shadow-xs space-y-6">
-                    {/* Step 1 & Step 2 */}
-                    <ImageUploader
+                    {/* Section 1: Garment Side (Photo on Left, "Мерки на дрехата" on Right) */}
+                    <GarmentSideSection
                       garmentImage={garmentImage}
-                      onGarmentChange={setGarmentImage}
-                      modelImage={modelImage}
-                      onModelChange={setModelImage}
+                      onGarmentChange={handleGarmentImageChange}
+                      chart={garmentChart}
+                      onChartChange={handleGarmentChartChange}
+                      chosenSize={chosenSize}
+                      onChosenSizeChange={setChosenSize}
+                      recommendedSize={recommendation.recommendedSize}
                     />
+
+                    <hr className="border-neutral-100" />
+
+                    {/* Section 2: Person Side (Photo on Left, "Вашите мерки" on Right) */}
+                    <PersonSideSection
+                      personImage={modelImage}
+                      onPersonChange={setModelImage}
+                      measurements={customerMeasurements}
+                      onMeasurementsChange={handleCustomerMeasurementsChange}
+                      showEmptyHint={attemptedGenerate}
+                    />
+
+                    {/* Recommendation Banner when both panels are filled */}
+                    {recommendation.recommendedSize && (
+                      <div className="p-3.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-neutral-900">
+                            {recommendation.explanationBg || `Препоръчваме размер ${recommendation.recommendedSize}.`}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-neutral-500">
+                          Избран: <strong className="text-neutral-900 font-semibold">{chosenSize || recommendation.recommendedSize}</strong>
+                        </span>
+                      </div>
+                    )}
 
                     <div className="space-y-1.5">
                       <label htmlFor="extra-instructions" className="block text-sm font-semibold text-neutral-900">
@@ -568,7 +726,7 @@ export default function App() {
                 </div>
 
                 {/* Right Column: Live Viewport & Result */}
-                <div className="lg:col-span-6 space-y-4 lg:sticky lg:top-24">
+                <div className="lg:col-span-5 xl:col-span-5 space-y-4 lg:sticky lg:top-24">
                   {/* Active Task Status Card */}
                   {currentTask && (
                     <TaskViewer

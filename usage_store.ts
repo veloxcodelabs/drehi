@@ -14,10 +14,12 @@ import {
   applyAttach,
   applyCheck,
   applyCommitTask,
+  applyGetSizeChart,
   applyReleaseReservation,
   applyReleaseTask,
   applyReserve,
   applyReset,
+  applySaveSizeChart,
   metaOfTask,
   ownerOfTask,
   sofiaDateString,
@@ -32,6 +34,7 @@ import {
   type ReserveOutcome,
   type UsageState,
 } from './usage_logic.js';
+import type { SizeChart } from './fit_guidance.js';
 
 export class UsageStoreError extends Error {
   readonly code = 'STORAGE_UNAVAILABLE';
@@ -53,6 +56,8 @@ export interface UsageBackend {
   tasks(code: string): Promise<RecentTask[]>;
   ownerOf(taskId: string): Promise<string | null>;
   metaOf(taskId: string): Promise<RecentTask | null>;
+  getSizeChart(code: string): Promise<SizeChart | null>;
+  saveSizeChart(code: string, chart: SizeChart | null): Promise<SizeChart | null>;
 }
 
 function selectMode(): 'file' | 'firestore' {
@@ -170,6 +175,15 @@ export function createFileBackend(filePath: string): UsageBackend {
     metaOf(taskId) {
       return exclusive(() => metaOfTask(read(), taskId));
     },
+    getSizeChart(code) {
+      return exclusive(() => applyGetSizeChart(read(), code));
+    },
+    saveSizeChart(code, chart) {
+      return update((state) => {
+        const result = applySaveSizeChart(state, code, chart);
+        return { state: result.state, value: result.sizeChart };
+      });
+    },
   };
 }
 
@@ -257,6 +271,7 @@ function asCode(data: any): CodeDoc {
     used: typeof data?.used === 'number' ? data.used : 0,
     holds: data?.holds && typeof data.holds === 'object' ? data.holds : {},
     recentTasks: Array.isArray(data?.recentTasks) ? data.recentTasks : [],
+    sizeChart: data?.sizeChart && typeof data.sizeChart === 'object' ? data.sizeChart : null,
   };
 }
 
@@ -487,6 +502,34 @@ function createFirestoreBackend(): UsageBackend {
         if (!reservationSnap.exists) return null;
         const meta = reservationSnap.data()?.meta;
         return meta && typeof meta === 'object' ? (meta as RecentTask) : null;
+      });
+    },
+    getSizeChart(code) {
+      return run(async (db) => {
+        const snap = await db.doc(`generation_usage/${code}`).get();
+        if (!snap.exists) return null;
+        const data = snap.data();
+        return data?.sizeChart && typeof data.sizeChart === 'object' ? data.sizeChart : null;
+      });
+    },
+    saveSizeChart(code, chart) {
+      return run(async (db) => {
+        return db.runTransaction(async (tx: any) => {
+          const docRef = db.doc(`generation_usage/${code}`);
+          const snap = await tx.get(docRef);
+          if (!snap.exists) {
+            tx.set(docRef, cleanForFirestore({
+              totalAllowed: DEFAULT_TRIES,
+              used: 0,
+              holds: {},
+              recentTasks: [],
+              sizeChart: chart,
+            }));
+          } else {
+            tx.set(docRef, cleanForFirestore({ sizeChart: chart }), { merge: true });
+          }
+          return chart;
+        });
       });
     },
   };

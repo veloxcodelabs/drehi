@@ -18,7 +18,12 @@ import {
   LogOut,
   Tag,
   Hash,
+  Ruler,
+  Plus,
+  Trash2,
 } from 'lucide-react';
+import type { FitType, SizeRow } from '../types';
+import { DEFAULT_SAMPLE_SIZE_ROWS, sortSizeRows } from '../../fit_guidance';
 
 function adminAuthHeaders(adminToken: string): Record<string, string> {
   return {
@@ -68,6 +73,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeBusy, setCodeBusy] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+
+  // Size chart state
+  const [chartCodeInput, setChartCodeInput] = useState('test');
+  const [loadedChartCode, setLoadedChartCode] = useState<string | null>(null);
+  const [chartFitType, setChartFitType] = useState<FitType>('regular');
+  const [chartRows, setChartRows] = useState<SizeRow[]>(DEFAULT_SAMPLE_SIZE_ROWS);
+  const [chartBusy, setChartBusy] = useState(false);
+  const [chartNotice, setChartNotice] = useState<string | null>(null);
+  const [chartError, setChartError] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,6 +206,111 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
     } finally {
       setCodeBusy(false);
     }
+  };
+
+  const handleLoadSizeChart = async () => {
+    if (!token || !chartCodeInput.trim()) return;
+    setChartBusy(true);
+    setChartError(null);
+    setChartNotice(null);
+    try {
+      const code = chartCodeInput.trim().toLowerCase();
+      const res = await fetch(`/api/admin/size-chart?code=${encodeURIComponent(code)}`, {
+        headers: adminAuthHeaders(token),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Неуспешно зареждане на таблицата.');
+      }
+      if (data.sizeChart && Array.isArray(data.sizeChart.rows) && data.sizeChart.rows.length > 0) {
+        setChartFitType(data.sizeChart.fitType || 'regular');
+        setChartRows(sortSizeRows(data.sizeChart.rows));
+        setLoadedChartCode(code);
+        setChartNotice(`Заредена е запазената таблица за код „${code}“.`);
+      } else {
+        setChartFitType('regular');
+        setChartRows(DEFAULT_SAMPLE_SIZE_ROWS);
+        setLoadedChartCode(code);
+        setChartNotice(`Няма съществуваща таблица за код „${code}“. Заредена е примерна форма (XS–XL).`);
+      }
+    } catch (err: any) {
+      setChartError(err.message || 'Грешка при зареждане на таблицата.');
+    } finally {
+      setChartBusy(false);
+    }
+  };
+
+  const handleSaveSizeChart = async () => {
+    const code = (loadedChartCode || chartCodeInput).trim().toLowerCase();
+    if (!token || !code) {
+      setChartError('Моля, посочете код.');
+      return;
+    }
+    setChartBusy(true);
+    setChartError(null);
+    setChartNotice(null);
+    try {
+      const cleanedRows: SizeRow[] = chartRows
+        .filter((r) => r.size.trim() !== '')
+        .map((r) => ({
+          size: r.size.trim().toUpperCase(),
+          bust: Number(r.bust) || 0,
+          waist: Number(r.waist) || 0,
+          hips: Number(r.hips) || 0,
+          length: Number(r.length) || 0,
+        }));
+
+      const sorted = sortSizeRows(cleanedRows);
+      const res = await fetch('/api/admin/size-chart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...adminAuthHeaders(token),
+        },
+        body: JSON.stringify({
+          code,
+          sizeChart: {
+            fitType: chartFitType,
+            rows: sorted,
+            updatedAt: Date.now(),
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Неуспешно запазване.');
+      }
+      setChartRows(sorted);
+      setLoadedChartCode(code);
+      setChartNotice(`Таблицата с размери за код „${code}“ е запазена успешно.`);
+    } catch (err: any) {
+      setChartError(err.message || 'Грешка при запазване на таблицата.');
+    } finally {
+      setChartBusy(false);
+    }
+  };
+
+  const handleAddChartRow = () => {
+    setChartRows((prev) => {
+      return [...prev, { size: '', bust: 0, waist: 0, hips: 0, length: 0 }];
+    });
+  };
+
+  const handleRemoveChartRow = (idx: number) => {
+    setChartRows((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleChartRowChange = (idx: number, field: keyof SizeRow, val: string) => {
+    setChartRows((prev) => {
+      const copy = [...prev];
+      if (field === 'size') {
+        copy[idx] = { ...copy[idx], size: val };
+      } else {
+        const num = val === '' ? 0 : parseFloat(val);
+        copy[idx] = { ...copy[idx], [field]: isNaN(num) ? 0 : num };
+      }
+      return copy;
+    });
   };
 
   useEffect(() => {
@@ -382,6 +501,171 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
           )}
           {codeError && (
             <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{codeError}</p>
+          )}
+        </section>
+
+        {/* Section: Таблица с размери */}
+        <section className="bg-white border border-neutral-200 rounded-xl p-5 space-y-4 shadow-xs">
+          <div className="flex items-center gap-2">
+            <Ruler className="w-4 h-4 text-emerald-600" />
+            <h2 className="text-sm font-semibold text-neutral-900">Таблица с размери</h2>
+          </div>
+          <p className="text-xs text-neutral-500 leading-relaxed">
+            Въведете код за покана, за да заредите и редактирате таблица с мерки за съответната дреха (XS–XL). Клиентите с този код ще виждат автоматична препоръка за размер и напасване при пробата.
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={chartCodeInput}
+              onChange={(e) => setChartCodeInput(e.target.value)}
+              placeholder="Код за покана, напр. test или bekoda"
+              className="flex-1 px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-emerald-600"
+            />
+            <button
+              type="button"
+              disabled={chartBusy || !chartCodeInput.trim()}
+              onClick={handleLoadSizeChart}
+              className="px-4 py-2 rounded-lg text-xs font-semibold bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-800 disabled:opacity-50 cursor-pointer"
+            >
+              Зареди таблица
+            </button>
+          </div>
+
+          {/* Table editing area */}
+          {loadedChartCode && (
+            <div className="pt-2 space-y-3 border-t border-neutral-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="text-xs text-neutral-700">
+                  Редактиране за код: <strong className="font-semibold text-neutral-900">{loadedChartCode}</strong>
+                </div>
+
+                {/* Fit Type Select: Прилепнала / Стандартна / Свободна */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="fit-type-select" className="text-xs text-neutral-600">
+                    Кройка:
+                  </label>
+                  <select
+                    id="fit-type-select"
+                    value={chartFitType}
+                    onChange={(e) => setChartFitType(e.target.value as FitType)}
+                    className="px-2.5 py-1.5 bg-neutral-50 border border-neutral-200 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-emerald-600 cursor-pointer"
+                  >
+                    <option value="slim">Прилепнала (+3 см)</option>
+                    <option value="regular">Стандартна (+6 см)</option>
+                    <option value="relaxed">Свободна (+10 см)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto border border-neutral-200 rounded-lg">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-600 font-semibold">
+                    <tr>
+                      <th className="px-3 py-2">Размер</th>
+                      <th className="px-3 py-2">Гърди (см)</th>
+                      <th className="px-3 py-2">Талия (см)</th>
+                      <th className="px-3 py-2">Ханш (см)</th>
+                      <th className="px-3 py-2">Дължина (см)</th>
+                      <th className="px-2 py-2 text-center w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100">
+                    {chartRows.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-neutral-50/50">
+                        <td className="p-2">
+                          <input
+                            type="text"
+                            value={row.size}
+                            placeholder="напр. M"
+                            onChange={(e) => handleChartRowChange(idx, 'size', e.target.value)}
+                            className="w-20 px-2 py-1 bg-white border border-neutral-200 rounded text-xs text-neutral-900 font-semibold focus:outline-none focus:border-emerald-600"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            value={row.bust || ''}
+                            placeholder="см"
+                            onChange={(e) => handleChartRowChange(idx, 'bust', e.target.value)}
+                            className="w-20 px-2 py-1 bg-white border border-neutral-200 rounded text-xs text-neutral-900 focus:outline-none focus:border-emerald-600"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            value={row.waist || ''}
+                            placeholder="см"
+                            onChange={(e) => handleChartRowChange(idx, 'waist', e.target.value)}
+                            className="w-20 px-2 py-1 bg-white border border-neutral-200 rounded text-xs text-neutral-900 focus:outline-none focus:border-emerald-600"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            value={row.hips || ''}
+                            placeholder="см"
+                            onChange={(e) => handleChartRowChange(idx, 'hips', e.target.value)}
+                            className="w-20 px-2 py-1 bg-white border border-neutral-200 rounded text-xs text-neutral-900 focus:outline-none focus:border-emerald-600"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            value={row.length || ''}
+                            placeholder="см"
+                            onChange={(e) => handleChartRowChange(idx, 'length', e.target.value)}
+                            className="w-20 px-2 py-1 bg-white border border-neutral-200 rounded text-xs text-neutral-900 focus:outline-none focus:border-emerald-600"
+                          />
+                        </td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveChartRow(idx)}
+                            className="p-1 text-neutral-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
+                            title="Премахни ред"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleAddChartRow}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border border-neutral-200 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Добави размер</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={chartBusy}
+                  onClick={handleSaveSizeChart}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 cursor-pointer"
+                >
+                  Запази таблицата
+                </button>
+              </div>
+            </div>
+          )}
+
+          {chartNotice && (
+            <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              {chartNotice}
+            </p>
+          )}
+          {chartError && (
+            <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+              {chartError}
+            </p>
           )}
         </section>
 
