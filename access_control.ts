@@ -116,6 +116,11 @@ const RAW_VALID_CODES: string[] = [
   'festivalguru', 'josephinehats', 'olsimple', 'elifashion', 'ezaro', 'gianni',
   'justsbag', 'radossa', 'stilitaliano', 'runners', 'woolcollection', 'aturbanwear',
   'damskobelio', 'monviel', 'bfashion', 'daramulti',
+  'bijubg', 'byivan', 'dandeliwood', 'danex', 'detskidrehi', 'narodninosii',
+  'egigi', 'enricobellini', 'fashionstylebg', 'fluxstore', 'gladiator', 'invito',
+  'luckyhandmade', 'luda', 'malcho', 'marineli', 'onewhite', 'peppis',
+  'pochorapi', 'premiumwear', 'redpoint', 'sportshoes7', 'teadore', 'valnata',
+  'virroy', 'zani',
 ];
 
 const KNOWN_CODES = new Set(RAW_VALID_CODES.map((code) => code.toLowerCase()));
