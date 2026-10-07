@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Download, Maximize2, X, RefreshCw, Copy, Check, ArrowRight, ArrowRightCircle, Image as ImageIcon } from 'lucide-react';
 import { GenerationTask } from '../types';
 import { getProxyImageUrl } from '../lib/api';
+import { SIZE_RESULT_NOTE } from '../../size_chart';
 
 interface ResultViewportProps {
   currentTask: GenerationTask | null;
@@ -10,6 +11,7 @@ interface ResultViewportProps {
   onUseAsReference?: (url: string) => void;
   onRegenerate: () => void;
   onRequestSupportLetter?: (imageUrl?: string) => void;
+  showSizeNote?: boolean;
 }
 
 export const ResultViewport: React.FC<ResultViewportProps> = ({
@@ -17,6 +19,7 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
   isGenerating,
   onRegenerate,
   onRequestSupportLetter,
+  showSizeNote = false,
 }) => {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -135,6 +138,10 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
           <div className="text-center p-8 text-neutral-400 text-xs">Няма върнато изображение</div>
         )}
       </div>
+
+      {showSizeNote && (
+        <p className="px-1 text-xs text-neutral-500 leading-relaxed">{SIZE_RESULT_NOTE}</p>
+      )}
 
       {/* Action and Info Bar */}
       {currentTask && (

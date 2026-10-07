@@ -6,6 +6,8 @@
  * and is counted only when the generation succeeds. Failures release the hold.
  */
 
+import { parseSizeChart, type SizeChart } from './size_chart.js';
+
 export const DEFAULT_TRIES = 3;
 export const DAILY_CAP = 300;
 export const HOLD_TTL_MS = 20 * 60 * 1000;
@@ -38,6 +40,8 @@ export interface CodeDoc {
   used: number;
   holds: Record<string, Hold>;
   recentTasks: RecentTask[];
+  /** Boutique size chart. Absent when the shop has not entered one. */
+  sizeChart?: SizeChart;
 }
 
 export interface DayDoc {
@@ -495,4 +499,39 @@ export function ownerOfTask(state: UsageState, taskId: string): string | null {
   const reservationId = state.taskIndex[taskId];
   if (!reservationId) return null;
   return state.reservations[reservationId]?.code || null;
+}
+
+export function sizeChartOf(state: UsageState, code: string): SizeChart | null {
+  return parseSizeChart(state.codes[code]?.sizeChart);
+}
+
+/**
+ * Store or clear a size chart on the same per-code document as the try counter.
+ * Credits, holds, and history are left as they are.
+ */
+export function applySetSizeChart(
+  state: UsageState,
+  code: string,
+  chart: SizeChart | null,
+  now: number,
+  defaultAllowed = DEFAULT_TRIES
+): { state: UsageState; balance: Balance } {
+  const next = cloneState(state);
+  if (!chart) {
+    if (next.codes[code]) delete next.codes[code].sizeChart;
+    return {
+      state: next,
+      balance: balanceFor(next, code, now, DAILY_CAP, defaultAllowed, true),
+    };
+  }
+  const codeDoc = next.codes[code] || blankCode(defaultAllowed);
+  codeDoc.sizeChart = {
+    fit: chart.fit,
+    sizes: chart.sizes.map((row) => ({ ...row })),
+  };
+  next.codes[code] = codeDoc;
+  return {
+    state: next,
+    balance: balanceFor(next, code, now, DAILY_CAP, defaultAllowed, true),
+  };
 }

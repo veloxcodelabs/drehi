@@ -20,6 +20,8 @@ import {
   applyReset,
   metaOfTask,
   ownerOfTask,
+  sizeChartOf,
+  applySetSizeChart,
   sofiaDateString,
   tasksFor,
   DEFAULT_TRIES,
@@ -32,6 +34,7 @@ import {
   type ReserveOutcome,
   type UsageState,
 } from './usage_logic.js';
+import { parseSizeChart, type SizeChart } from './size_chart.js';
 
 export class UsageStoreError extends Error {
   readonly code = 'STORAGE_UNAVAILABLE';
@@ -53,6 +56,8 @@ export interface UsageBackend {
   tasks(code: string): Promise<RecentTask[]>;
   ownerOf(taskId: string): Promise<string | null>;
   metaOf(taskId: string): Promise<RecentTask | null>;
+  getSizeChart(code: string): Promise<SizeChart | null>;
+  setSizeChart(code: string, chart: SizeChart | null): Promise<void>;
 }
 
 function selectMode(): 'file' | 'firestore' {
@@ -170,6 +175,15 @@ export function createFileBackend(filePath: string): UsageBackend {
     metaOf(taskId) {
       return exclusive(() => metaOfTask(read(), taskId));
     },
+    getSizeChart(code) {
+      return exclusive(() => sizeChartOf(read(), code));
+    },
+    setSizeChart(code, chart) {
+      return update((state) => {
+        const result = applySetSizeChart(state, code, chart, Date.now());
+        return { state: result.state, value: undefined };
+      });
+    },
   };
 }
 
@@ -252,11 +266,13 @@ async function getFirestoreDb(): Promise<any> {
 }
 
 function asCode(data: any): CodeDoc {
+  const sizeChart = parseSizeChart(data?.sizeChart);
   return {
     totalAllowed: typeof data?.totalAllowed === 'number' ? data.totalAllowed : DEFAULT_TRIES,
     used: typeof data?.used === 'number' ? data.used : 0,
     holds: data?.holds && typeof data.holds === 'object' ? data.holds : {},
     recentTasks: Array.isArray(data?.recentTasks) ? data.recentTasks : [],
+    ...(sizeChart ? { sizeChart } : {}),
   };
 }
 
@@ -487,6 +503,19 @@ function createFirestoreBackend(): UsageBackend {
         if (!reservationSnap.exists) return null;
         const meta = reservationSnap.data()?.meta;
         return meta && typeof meta === 'object' ? (meta as RecentTask) : null;
+      });
+    },
+    getSizeChart(code) {
+      return run(async (db) => {
+        const snap = await db.doc(`generation_usage/${code}`).get();
+        if (!snap.exists) return null;
+        return parseSizeChart(snap.data()?.sizeChart);
+      });
+    },
+    setSizeChart(code, chart) {
+      return transactCode(code, (state, now) => {
+        const result = applySetSizeChart(state, code, chart, now);
+        return { state: result.state, value: undefined };
       });
     },
   };

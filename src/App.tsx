@@ -27,6 +27,8 @@ import { ApiSettingsModal } from './components/ApiSettingsModal';
 import { InviteAccessGate } from './components/InviteAccessGate';
 import { SupportLetterModal } from './components/SupportLetterModal';
 import { AdminDashboard } from './components/AdminDashboard';
+import { SizeGuide, type FitRequestPayload } from './components/SizeGuide';
+import { parseSizeChart } from '../size_chart';
 
 const DEFAULT_GPT_VERSION = 'cce611c44553ba5f061813d75a1e5f93d8c901047528da275f667ebe7d784565';
 
@@ -97,6 +99,7 @@ export default function App() {
   const [aspectRatio, setAspectRatio] = useState('3:4');
   const [resolution, setResolution] = useState('2k');
   const [extraInstructions, setExtraInstructions] = useState('');
+  const [fitRequest, setFitRequest] = useState<FitRequestPayload | null>(null);
 
   // Execution & Task State
   const [currentTask, setCurrentTask] = useState<GenerationTask | null>(null);
@@ -349,7 +352,7 @@ export default function App() {
     // Automatic boutique fashion prompt tailored for high-end lookbook
     const autoPrompt = `High-end fashion editorial lookbook photography of the exact uploaded garment worn by the model. Immaculate studio lighting, soft shadows, sharp textile drape, authentic fabric textures, luxury apparel catalogue photo. Neutral clean backdrop.`;
 
-    const requestPayloadInput = {
+    const requestPayloadInput: Record<string, unknown> = {
       prompt: autoPrompt,
       extra_instructions: extraInstructions,
       // Order is the garment, then the person. The image API has no separate fields.
@@ -357,6 +360,9 @@ export default function App() {
       aspect_ratio: aspectRatio,
       resolution: resolution,
     };
+    if (fitRequest) {
+      requestPayloadInput.fit_request = fitRequest;
+    }
 
     try {
       const res = await createTask({
@@ -428,6 +434,8 @@ export default function App() {
     }
   };
 
+  const sizeChart = accessStatus.valid ? parseSizeChart(accessStatus.sizeChart) : null;
+
   const handleClearHistory = () => {
     setHistory([]);
     if (accessStatus.code) {
@@ -483,6 +491,10 @@ export default function App() {
 
                   {/* 3-Step Container */}
                   <div className="p-5 sm:p-6 rounded-2xl border border-neutral-200 bg-white shadow-xs space-y-6">
+                    {sizeChart && (
+                      <SizeGuide key={accessStatus.code} chart={sizeChart} onChange={setFitRequest} />
+                    )}
+
                     {/* Step 1 & Step 2 */}
                     <ImageUploader
                       garmentImage={garmentImage}
@@ -585,6 +597,7 @@ export default function App() {
                     <ResultViewport
                       currentTask={currentTask}
                       isGenerating={isGenerating}
+                      showSizeNote={Boolean(sizeChart)}
                       onRegenerate={handleGenerate}
                       onRequestSupportLetter={(img) => {
                         setSupportLetterImage(img || currentTask?.outputUrls?.[0]);
