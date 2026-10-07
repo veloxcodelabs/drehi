@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Download, Maximize2, X, RefreshCw, Copy, Check, ArrowRight, ArrowRightCircle, Image as ImageIcon } from 'lucide-react';
 import { GenerationTask } from '../types';
 import { getProxyImageUrl } from '../lib/api';
-import { isTaskOutputExpired } from '../lib/tryonStorage';
 
 interface ResultViewportProps {
   currentTask: GenerationTask | null;
@@ -27,40 +26,6 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
   const primaryOutput = currentTask?.outputUrls?.[0];
   const proxyUrl = primaryOutput ? getProxyImageUrl(primaryOutput) : '';
   const downloadUrl = primaryOutput ? getProxyImageUrl(primaryOutput, true) : '';
-
-  const [displaySrc, setDisplaySrc] = useState<string>('');
-  const [hasTriedFallback, setHasTriedFallback] = useState(false);
-
-  // Reset image state whenever the displayed output changes
-  useEffect(() => {
-    setImageLoaded(false);
-    setHasTriedFallback(false);
-    if (currentTask && isTaskOutputExpired(currentTask)) {
-      setImageError(true);
-      setDisplaySrc('');
-      return;
-    }
-    setImageError(false);
-    if (primaryOutput) {
-      setDisplaySrc(proxyUrl || primaryOutput);
-    } else {
-      setDisplaySrc('');
-    }
-  }, [primaryOutput, proxyUrl, currentTask]);
-
-  const handleImageError = () => {
-    if (isTaskOutputExpired(currentTask)) {
-      setImageError(true);
-      return;
-    }
-    // If proxy failed, automatically attempt direct URL as fallback before giving up
-    if (!hasTriedFallback && primaryOutput && displaySrc !== primaryOutput) {
-      setHasTriedFallback(true);
-      setDisplaySrc(primaryOutput);
-      return;
-    }
-    setImageError(true);
-  };
 
   const handleCopyUrl = () => {
     if (!primaryOutput) return;
@@ -114,31 +79,24 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
             )}
 
             {imageError ? (
-              <div className="flex flex-col items-center justify-center p-8 text-center text-neutral-500 space-y-3">
-                <ImageIcon className="w-8 h-8 text-neutral-400" />
-                <div>
-                  <p className="text-xs text-neutral-800 font-semibold">Прегледът от тази сесия е изтекъл</p>
-                  <p className="text-[11px] text-neutral-400 mt-1 max-w-xs leading-relaxed">
-                    Временните изображения от сесията се съхраняват ограничено време. Можете да генерирате нова визия веднага.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={onRegenerate}
-                    className="px-4 py-2 text-xs font-semibold bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer shadow-xs"
-                  >
-                    Генерирай отново
-                  </button>
-                </div>
+              <div className="flex flex-col items-center justify-center p-8 text-center text-neutral-500">
+                <ImageIcon className="w-8 h-8 text-neutral-400 mb-2" />
+                <p className="text-xs text-neutral-700 font-medium">Неуспешно зареждане на прегледа</p>
+                <a
+                  href={downloadUrl}
+                  download
+                  className="mt-2 text-xs text-emerald-700 hover:underline"
+                >
+                  Свали файла директно
+                </a>
               </div>
             ) : (
               <img
-                src={displaySrc || proxyUrl}
+                src={proxyUrl}
                 alt="Martitony Style Lab Визия"
                 referrerPolicy="no-referrer"
                 onLoad={() => setImageLoaded(true)}
-                onError={handleImageError}
+                onError={() => setImageError(true)}
                 className={`max-h-[640px] w-auto max-w-full object-contain transition-opacity duration-300 ${
                   imageLoaded ? 'opacity-100' : 'opacity-0'
                 }`}
@@ -146,49 +104,40 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
             )}
 
             {/* Quick Action Overlay */}
-            {!imageError && imageLoaded && (
-              <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/95 backdrop-blur-md p-1 rounded-lg border border-neutral-200 shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => setLightboxOpen(true)}
-                  className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
-                  title="Цял екран"
-                >
-                  <Maximize2 className="w-4 h-4" />
-                </button>
-                <a
-                  href={downloadUrl}
-                  download="martitony-style-lab.png"
-                  className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
-                  title="Свали изображението"
-                >
-                  <Download className="w-4 h-4" />
-                </a>
-                <button
-                  type="button"
-                  onClick={handleCopyUrl}
-                  className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
-                  title="Копирай линк"
-                >
-                  {copiedUrl ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            )}
+            <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/95 backdrop-blur-md p-1 rounded-lg border border-neutral-200 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setLightboxOpen(true)}
+                className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
+                title="Цял екран"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </button>
+              <a
+                href={downloadUrl}
+                download="martitony-style-lab.png"
+                className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
+                title="Свали изображението"
+              >
+                <Download className="w-4 h-4" />
+              </a>
+              <button
+                type="button"
+                onClick={handleCopyUrl}
+                className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
+                title="Копирай линк"
+              >
+                {copiedUrl ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
           </>
         ) : (
           <div className="text-center p-8 text-neutral-400 text-xs">Няма върнато изображение</div>
         )}
       </div>
 
-      {/* Note directly under generated result image */}
-      {primaryOutput && !imageError && (
-        <p className="text-center text-[12px] sm:text-[13px] text-neutral-500 leading-normal px-2">
-          Визуализация с AI – ориентировъчна. За точен размер вижте таблицата с мерки.
-        </p>
-      )}
-
       {/* Action and Info Bar */}
-      {currentTask && !imageError && (
+      {currentTask && (
         <div className="p-4 rounded-xl border border-neutral-200 bg-white space-y-3 shadow-xs">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-semibold text-neutral-800">
@@ -229,8 +178,8 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
           </div>
 
           {/* Plain note under the result */}
-          <p className="text-center text-[12px] sm:text-[13px] text-neutral-500 pt-1 leading-relaxed">
-            Визуализация с AI – ориентировъчна. За точен размер вижте таблицата с мерки.
+          <p className="text-center text-[11px] text-neutral-500 pt-1 leading-relaxed">
+            Изображението е създадено с AI и показва как приблизително би изглеждала дрехата върху Вас. За размера се водете по таблицата с мерки.
           </p>
         </div>
       )}
@@ -250,15 +199,12 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
               <X className="w-5 h-5" />
             </button>
             <img
-              src={displaySrc || primaryOutput || proxyUrl}
+              src={proxyUrl}
               alt="Преглед на цял екран"
               referrerPolicy="no-referrer"
               className="max-h-[85vh] max-w-full rounded-lg object-contain shadow-2xl bg-white"
               onClick={(e) => e.stopPropagation()}
             />
-            <p className="text-center text-[12px] sm:text-[13px] text-neutral-300 mt-2 px-4">
-              Визуализация с AI – ориентировъчна. За точен размер вижте таблицата с мерки.
-            </p>
           </div>
         </div>
       )}

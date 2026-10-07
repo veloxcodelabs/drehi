@@ -39,11 +39,6 @@ import {
   withGarmentRoles,
 } from './garment_check.js';
 import { applyFitGuidanceToPrompt } from './fit_guidance.js';
-import {
-  savePersistentImage,
-  getPersistentImage,
-  checkPersistentImageExists,
-} from './persistent_image_store.js';
 
 dotenv.config();
 
@@ -85,76 +80,8 @@ try {
   console.warn('Could not create uploads directory:', e);
 }
 
-const uploadsCacheDir = path.join(uploadsDir, 'cache');
-try {
-  if (!fs.existsSync(uploadsCacheDir)) {
-    fs.mkdirSync(uploadsCacheDir, { recursive: true });
-  }
-} catch (e) {
-  console.warn('Could not create uploads cache directory:', e);
-}
-
-function getExpiredLookbookPlaceholderSvg(): string {
-  return `<svg width="600" height="800" viewBox="0 0 600 800" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="600" height="800" fill="#18181b"/>
-  <rect x="24" y="24" width="552" height="752" rx="16" stroke="#27272a" stroke-width="2"/>
-  <circle cx="300" cy="340" r="48" fill="#27272a"/>
-  <path d="M284 340h32M300 324v32" stroke="#71717a" stroke-width="2.5" stroke-linecap="round"/>
-  <text x="300" y="426" text-anchor="middle" fill="#f4f4f5" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="15" font-weight="600" letter-spacing="0.06em">MARTITONY STYLE LAB</text>
-  <text x="300" y="460" text-anchor="middle" fill="#a1a1aa" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="13">Временният преглед от тази сесия е изтекъл</text>
-  <text x="300" y="490" text-anchor="middle" fill="#71717a" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="11.5">Натиснете „Генерирай“ за създаване на нова студийна визия</text>
-</svg>`;
-}
-
 // Serve uploaded user files
 app.use('/uploads', express.static(uploadsDir));
-// Check persistent storage for /uploads/:filename when not found on local disk
-app.get('/uploads/:filename', async (req: Request, res: Response, next) => {
-  try {
-    const rawFilename = req.params.filename || '';
-    const localFile = path.join(uploadsDir, rawFilename);
-    if (fs.existsSync(localFile)) {
-      return next();
-    }
-    const id = rawFilename.replace(/\.[a-zA-Z0-9]+$/, '');
-    const img = await getPersistentImage(id);
-    if (img) {
-      res.setHeader('Content-Type', img.mime || 'image/jpeg');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      return res.send(img.buffer);
-    }
-  } catch (err) {
-    console.warn('[Uploads Route] Fallback check error:', err);
-  }
-  return res.status(404).send('Upload not found');
-});
-
-// Dedicated persistent temporary image serving across serverless instances
-app.get('/api/temp-image/:id', async (req: Request, res: Response) => {
-  try {
-    const rawId = req.params.id || '';
-    const id = rawId.replace(/\.[a-zA-Z0-9]+$/, '');
-    const img = await getPersistentImage(id);
-    if (!img) {
-      res.setHeader('Cache-Control', 'no-store');
-      return res.status(410).json({ error: 'Image expired or missing from persistent storage', code: 'EXPIRED' });
-    }
-
-    res.setHeader('Content-Type', img.mime || 'image/jpeg');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    if (req.query.download === 'true') {
-      res.setHeader('Content-Disposition', `attachment; filename="${img.filename || 'image.jpg'}"`);
-    }
-    return res.send(img.buffer);
-  } catch (err: any) {
-    console.error('[Temp Image Route] Error serving persistent image:', err);
-    return res.status(500).json({ error: 'Error reading image' });
-  }
-});
 
 // In-memory store for simulated demo tasks
 interface SimulatedTask {
@@ -295,49 +222,14 @@ app.post('/api/upload', async (req: Request, res: Response) => {
   }
 });
 
-// Proxy for downloading/viewing generated outputs with local caching and expired link handling
+// Proxy for downloading/viewing generated outputs that require Authorization header
 app.get('/api/proxy-image', async (req: Request, res: Response) => {
   try {
-    let targetUrl = (req.query.url as string) || '';
-
-    // If query string was split on unencoded '&', reconstruct full URL from originalUrl
-    if (req.originalUrl && req.originalUrl.includes('url=')) {
-      const idx = req.originalUrl.indexOf('url=');
-      let rawParam = req.originalUrl.slice(idx + 4);
-      // Strip download query parameter if attached at the end or beginning
-      if (rawParam.endsWith('&download=true') || rawParam.endsWith('?download=true')) {
-        rawParam = rawParam.slice(0, -14);
-      } else if (rawParam.startsWith('download=true&')) {
-        rawParam = rawParam.slice(14);
-      }
-      try {
-        const decoded = decodeURIComponent(rawParam);
-        if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-          targetUrl = decoded;
-        }
-      } catch {
-        if (rawParam.startsWith('http://') || rawParam.startsWith('https://')) {
-          targetUrl = rawParam;
-        }
-      }
-    }
+    const targetUrl = req.query.url as string;
+    const token = getServerToken();
 
     if (!targetUrl) {
       return res.status(400).send('Missing url parameter');
-    }
-
-    // Support local files if targetUrl is relative
-    if (targetUrl.startsWith('/uploads/')) {
-      const localPath = path.join(process.cwd(), targetUrl);
-      if (fs.existsSync(localPath)) {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        if (req.query.download === 'true') {
-          res.setHeader('Content-Disposition', `attachment; filename="${path.basename(localPath)}"`);
-        }
-        return res.sendFile(localPath);
-      }
     }
 
     // Validate protocol
@@ -345,124 +237,40 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
       return res.status(400).send('Invalid url protocol');
     }
 
-    const cleanPath = targetUrl.split('?')[0];
-    const urlHash = crypto.createHash('sha256').update(cleanPath).digest('hex').slice(0, 32);
-    const cachedFilePath = path.join(uploadsCacheDir, `${urlHash}.png`);
-
-    // Check if we already have a cached copy on disk
-    if (fs.existsSync(cachedFilePath)) {
-      res.setHeader('Content-Type', 'image/png');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      if (req.query.download === 'true') {
-        res.setHeader('Content-Disposition', 'attachment; filename="martitony-style-lab.png"');
-      }
-      return res.sendFile(cachedFilePath);
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
-    // Check if the URL is an expired OSS URL
-    const expiresMatch = targetUrl.match(/[?&]Expires=(\d+)/);
-    const isExpired = Boolean(expiresMatch && parseInt(expiresMatch[1], 10) < Math.floor(Date.now() / 1000));
-    if (isExpired) {
-      console.log(`[Proxy image] Remote link expired for ${cleanPath}`);
-      res.setHeader('Cache-Control', 'no-store');
-      return res.status(410).json({ error: 'Image expired', code: 'EXPIRED' });
-    }
-
-    const browserHeaders: Record<string, string> = {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-    };
-
-    // Determine if the URL is an internal API endpoint requiring Bearer auth.
-    // Presigned S3/GCS/CDN URLs MUST NOT receive an Authorization header (AWS returns 400 Bad Request).
-    const token = getServerToken();
-    const isSignedOrCdn =
-      targetUrl.includes('X-Amz-') ||
-      targetUrl.includes('Signature=') ||
-      targetUrl.includes('s3.amazonaws.com') ||
-      targetUrl.includes('r2.cloudflarestorage.com') ||
-      targetUrl.includes('storage.googleapis.com') ||
-      targetUrl.includes('replicate.delivery');
-
-    let response: globalThis.Response;
-
-    if (token && !isSignedOrCdn && targetUrl.includes('api.vmodel.ai')) {
-      // First try with Auth for internal API domain
-      response = await fetch(targetUrl, {
-        headers: {
-          ...browserHeaders,
-          Authorization: `Bearer ${token}`,
-        },
-        redirect: 'follow',
-      });
-      if (!response.ok && (response.status === 401 || response.status === 403 || response.status === 400)) {
-        // Retry without auth
-        response = await fetch(targetUrl, {
-          headers: browserHeaders,
-          redirect: 'follow',
-        });
-      }
-    } else {
-      // Direct standard fetch without leaking Bearer token to CDNs
-      response = await fetch(targetUrl, {
-        headers: browserHeaders,
-        redirect: 'follow',
-      });
-
-      // If 401 on external endpoint and token exists, attempt fallback with token
-      if (!response.ok && response.status === 401 && token && !isSignedOrCdn) {
-        response = await fetch(targetUrl, {
-          headers: {
-            ...browserHeaders,
-            Authorization: `Bearer ${token}`,
-          },
-          redirect: 'follow',
-        });
-      }
-    }
+    const response = await fetch(targetUrl, {
+      headers,
+    });
 
     if (!response.ok) {
-      console.log(`[Proxy image] Remote host returned ${response.status} for ${cleanPath}`);
-      res.setHeader('Cache-Control', 'no-store');
-      return res.status(response.status >= 400 && response.status < 500 ? response.status : 502).json({
-        error: 'Remote image not accessible',
-        status: response.status,
-      });
+      // Try without bearer header if failed with bearer (some CDN links might not expect Auth)
+      if (token) {
+        const retryWithoutAuth = await fetch(targetUrl);
+        if (retryWithoutAuth.ok) {
+          const contentType = retryWithoutAuth.headers.get('content-type') || 'image/png';
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          const arrayBuffer = await retryWithoutAuth.arrayBuffer();
+          return res.send(Buffer.from(arrayBuffer));
+        }
+      }
+      return res.status(response.status).send(`Failed to proxy image: ${response.statusText}`);
     }
 
     const contentType = response.headers.get('content-type') || 'image/png';
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Save to disk cache for future requests so it never breaks
-    try {
-      fs.writeFileSync(cachedFilePath, buffer);
-    } catch (writeErr) {
-      console.warn('[Proxy image] Cache write failed:', writeErr);
-    }
-
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-
     if (req.query.download === 'true') {
-      let filename = 'martitony-style-lab.png';
-      try {
-        const pathname = new URL(targetUrl).pathname;
-        const base = path.basename(pathname);
-        if (base && base.includes('.')) filename = base;
-      } catch {
-        // fallback filename
-      }
+      const filename = path.basename(new URL(targetUrl).pathname) || 'ai-picture.png';
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     }
 
-    return res.send(buffer);
+    const arrayBuffer = await response.arrayBuffer();
+    return res.send(Buffer.from(arrayBuffer));
   } catch (error: any) {
     console.error('Proxy image error:', error);
     return res.status(500).send('Failed to fetch image: ' + error.message);
@@ -993,48 +801,14 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
         return res.json(responseData);
       }
 
-      let resolvedOutputs = Array.isArray(responseData?.result?.output) ? [...responseData.result.output] : [];
-      const primaryUrl = typeof resolvedOutputs[0] === 'string' ? resolvedOutputs[0] : '';
-
-      // Immediately cache generated output image to local disk so it is permanent and never expires
-      if (primaryUrl && primaryUrl.startsWith('http')) {
-        try {
-          const cachedFilename = `result_${taskId}.png`;
-          const localCachePath = path.join(uploadsDir, cachedFilename);
-          if (!fs.existsSync(localCachePath)) {
-            const imgRes = await fetch(primaryUrl, {
-              headers: {
-                'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-              },
-            });
-            if (imgRes.ok) {
-              const arrayBuf = await imgRes.arrayBuffer();
-              fs.writeFileSync(localCachePath, Buffer.from(arrayBuf));
-              console.log(`[Task Success] Permanently cached result image for task ${taskId}`);
-            }
-          }
-          if (fs.existsSync(localCachePath)) {
-            const localUrl = `/uploads/${cachedFilename}`;
-            resolvedOutputs = [localUrl, ...resolvedOutputs.filter((u) => u !== primaryUrl)];
-            if (responseData?.result) {
-              responseData.result.output = resolvedOutputs;
-            }
-          }
-        } catch (cacheErr) {
-          console.warn('[Task Success] Could not cache output locally:', cacheErr);
-        }
-      }
-
       const fin = await finalizeTaskResult(taskId, true, 'Task completed successfully', {
-        outputUrls: resolvedOutputs,
+        outputUrls: responseData?.result?.output || [],
         predictTime: responseData?.result?.predict_time,
         totalTime: responseData?.result?.total_time,
         completedAt: Date.now(),
       });
       await saveTaskSuccess(taskId, {
-        outputUrls: resolvedOutputs,
+        outputUrls: responseData?.result?.output || [],
         predictTime: responseData?.result?.predict_time,
         totalTime: responseData?.result?.total_time,
         completedAt: Date.now(),

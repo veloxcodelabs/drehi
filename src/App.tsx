@@ -16,7 +16,6 @@ import {
   getTask,
   validateAccessCode,
   ApiRequestError,
-  getProxyImageUrl,
 } from './lib/api';
 import { Header } from './components/Header';
 import { GarmentSideSection } from './components/GarmentSideSection';
@@ -40,9 +39,6 @@ import {
   buildConsistencyCacheKey,
   getCachedTryOnResult,
   saveCachedTryOnResult,
-  removeCachedTryOnResult,
-  isTaskOutputExpired,
-  verifyImageUrlLoads,
   getSavedGarmentTable,
   saveGarmentTable,
   getSavedBodyMeasurements,
@@ -204,9 +200,8 @@ export default function App() {
 
     const localTasks = getStoredHistory(validCode);
     setHistory(localTasks);
-    const validLocal = localTasks.find((t) => !isTaskOutputExpired(t));
-    if (validLocal) {
-      setCurrentTask(validLocal);
+    if (localTasks.length > 0) {
+      setCurrentTask(localTasks[0]);
     } else {
       setCurrentTask(null);
     }
@@ -226,11 +221,7 @@ export default function App() {
       setHistory(merged);
       saveStoredHistory(validCode, merged);
       if (merged.length > 0) {
-        setCurrentTask((prev) => {
-          if (prev && !isTaskOutputExpired(prev)) return prev;
-          const fresh = merged.find((t) => !isTaskOutputExpired(t));
-          return fresh || null;
-        });
+        setCurrentTask((prev) => prev || merged[0]);
       }
     } catch (e) {
       console.warn('Could not load remote tasks:', e);
@@ -408,8 +399,7 @@ export default function App() {
     setTimeout(poll, 1500);
   };
 
-  const handleGenerate = async (forceFreshParam?: boolean | React.MouseEvent) => {
-    const forceFresh = forceFreshParam === true;
+  const handleGenerate = async () => {
     setGeneralError(null);
     setAttemptedGenerate(true);
 
@@ -465,30 +455,12 @@ export default function App() {
     );
     activeCacheKeyRef.current = cacheKey;
 
-    if (!forceFresh) {
-      const cachedTask = getCachedTryOnResult(cacheKey);
-      if (cachedTask && Array.isArray(cachedTask.outputUrls) && cachedTask.outputUrls.length > 0) {
-        const primaryUrl = cachedTask.outputUrls[0];
-        const testUrl = getProxyImageUrl(primaryUrl);
-        // Requirement 1: check that its stored image still exists and loads
-        const imageLoads = await verifyImageUrlLoads(testUrl);
-        if (imageLoads) {
-          console.log(
-            `[Consistency Cache] Stored image verified and accessible for key "${cacheKey}". Reusing cached result without consuming a try.`
-          );
-          setCurrentTask(cachedTask);
-          setIsGenerating(false);
-          return;
-        } else {
-          console.log(
-            `[Consistency Cache] Stored image failed to load or is missing for key "${cacheKey}" (url: ${testUrl}). Reason: image expired or deleted. Deleting cache entry and silently generating a new image.`
-          );
-          removeCachedTryOnResult(cacheKey);
-        }
-      }
-    } else {
-      console.log(`[Consistency Cache] Force fresh generation requested. Purging cache for key "${cacheKey}".`);
-      removeCachedTryOnResult(cacheKey);
+    const cachedTask = getCachedTryOnResult(cacheKey);
+    if (cachedTask && Array.isArray(cachedTask.outputUrls) && cachedTask.outputUrls.length > 0) {
+      // If a result exists for the key, show it instead of generating again and don't consume a try!
+      setCurrentTask(cachedTask);
+      setIsGenerating(false);
+      return;
     }
 
     setIsGenerating(true);
@@ -721,7 +693,7 @@ export default function App() {
                           <button
                             type="button"
                             disabled={isGenerating || accessStatus.remaining <= 0}
-                            onClick={() => handleGenerate()}
+                            onClick={handleGenerate}
                             className={`w-full py-4 px-6 rounded-xl font-bold text-base flex items-center justify-center gap-2.5 transition-all shadow-sm cursor-pointer ${
                               isGenerating
                                 ? 'bg-neutral-800 text-neutral-400 cursor-not-allowed'
@@ -762,7 +734,7 @@ export default function App() {
                       status={currentTask.status}
                       error={currentTask.error}
                       isSimulated={currentTask.isSimulated}
-                      onRetry={() => handleGenerate(true)}
+                      onRetry={handleGenerate}
                     />
                   )}
 
@@ -771,7 +743,7 @@ export default function App() {
                     <ResultViewport
                       currentTask={currentTask}
                       isGenerating={isGenerating}
-                      onRegenerate={() => handleGenerate(true)}
+                      onRegenerate={handleGenerate}
                       onRequestSupportLetter={(img) => {
                         setSupportLetterImage(img || currentTask?.outputUrls?.[0]);
                         setSupportLetterOpen(true);
