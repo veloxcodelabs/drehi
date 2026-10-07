@@ -16,6 +16,7 @@ import {
   getTask,
   validateAccessCode,
   ApiRequestError,
+  getProxyImageUrl,
 } from './lib/api';
 import { Header } from './components/Header';
 import { GarmentSideSection } from './components/GarmentSideSection';
@@ -41,6 +42,7 @@ import {
   saveCachedTryOnResult,
   removeCachedTryOnResult,
   isTaskOutputExpired,
+  verifyImageUrlLoads,
   getSavedGarmentTable,
   saveGarmentTable,
   getSavedBodyMeasurements,
@@ -466,16 +468,26 @@ export default function App() {
     if (!forceFresh) {
       const cachedTask = getCachedTryOnResult(cacheKey);
       if (cachedTask && Array.isArray(cachedTask.outputUrls) && cachedTask.outputUrls.length > 0) {
-        if (!isTaskOutputExpired(cachedTask)) {
-          // If a result exists for the key and is not expired, show it without consuming a try
+        const primaryUrl = cachedTask.outputUrls[0];
+        const testUrl = getProxyImageUrl(primaryUrl);
+        // Requirement 1: check that its stored image still exists and loads
+        const imageLoads = await verifyImageUrlLoads(testUrl);
+        if (imageLoads) {
+          console.log(
+            `[Consistency Cache] Stored image verified and accessible for key "${cacheKey}". Reusing cached result without consuming a try.`
+          );
           setCurrentTask(cachedTask);
           setIsGenerating(false);
           return;
         } else {
+          console.log(
+            `[Consistency Cache] Stored image failed to load or is missing for key "${cacheKey}" (url: ${testUrl}). Reason: image expired or deleted. Deleting cache entry and silently generating a new image.`
+          );
           removeCachedTryOnResult(cacheKey);
         }
       }
     } else {
+      console.log(`[Consistency Cache] Force fresh generation requested. Purging cache for key "${cacheKey}".`);
       removeCachedTryOnResult(cacheKey);
     }
 

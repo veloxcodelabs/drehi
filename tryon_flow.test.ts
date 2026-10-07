@@ -15,6 +15,7 @@ import {
   hashImage,
   buildConsistencyCacheKey,
   isTaskOutputExpired,
+  getTaskImageExpiryTime,
 } from './src/lib/tryonStorage.js';
 
 const SAMPLE_CHART: SizeChart = {
@@ -115,3 +116,17 @@ test('isTaskOutputExpired correctly identifies expired vs valid URLs', () => {
   };
   assert.equal(isTaskOutputExpired(dataTask), false);
 });
+
+test('getTaskImageExpiryTime extracts presigned expiry timestamp matching stored image', () => {
+  const ossTask: any = {
+    outputUrls: ['https://cdn.vmimgs.com/datarm/user/result/img.png?OSSAccessKeyId=KEY&Expires=1791400449&Signature=SIG'],
+  };
+  assert.equal(getTaskImageExpiryTime(ossTask), 1791400449000);
+
+  const localTask: any = {
+    outputUrls: ['/uploads/result_task_123.png'],
+    completedAt: 1700000000000,
+  };
+  assert.equal(getTaskImageExpiryTime(localTask), 1700000000000 + 24 * 60 * 60 * 1000);
+});
+

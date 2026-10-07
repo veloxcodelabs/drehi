@@ -128,7 +128,7 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
                     onClick={onRegenerate}
                     className="px-4 py-2 text-xs font-semibold bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer shadow-xs"
                   >
-                    Генерирай нова визия
+                    Генерирай отново
                   </button>
                 </div>
               </div>

@@ -317,14 +317,8 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
     const isExpired = Boolean(expiresMatch && parseInt(expiresMatch[1], 10) < Math.floor(Date.now() / 1000));
     if (isExpired) {
       console.log(`[Proxy image] Remote link expired for ${cleanPath}`);
-      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      if (req.query.download === 'true') {
-        res.setHeader('Content-Disposition', 'attachment; filename="martitony-lookbook-archived.svg"');
-      }
-      return res.status(200).send(getExpiredLookbookPlaceholderSvg());
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(410).json({ error: 'Image expired', code: 'EXPIRED' });
     }
 
     const browserHeaders: Record<string, string> = {
@@ -384,12 +378,11 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
 
     if (!response.ok) {
       console.log(`[Proxy image] Remote host returned ${response.status} for ${cleanPath}`);
-      // Return beautiful fallback placeholder instead of crashing the UI or printing error warnings
-      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
-      res.setHeader('Cache-Control', 'public, max-age=600');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      return res.status(200).send(getExpiredLookbookPlaceholderSvg());
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(response.status >= 400 && response.status < 500 ? response.status : 502).json({
+        error: 'Remote image not accessible',
+        status: response.status,
+      });
     }
 
     const contentType = response.headers.get('content-type') || 'image/png';
