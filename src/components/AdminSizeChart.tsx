@@ -214,7 +214,53 @@ export const AdminSizeChart: React.FC<AdminSizeChartProps> = ({ token, code, onU
             ))}
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="space-y-3 sm:hidden">
+            {rows.map((row) => (
+              <div key={row.id} className="border border-neutral-200 rounded-lg p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="flex-1 space-y-1">
+                    <span className="text-[11px] font-medium text-neutral-500">Размер</span>
+                    <input
+                      type="text"
+                      value={row.label}
+                      onChange={(event) => updateRow(row.id, { label: event.target.value })}
+                      className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-200 rounded-md text-sm text-neutral-900 focus:outline-none focus:border-emerald-600"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))}
+                    className="mt-4 text-xs text-neutral-500 hover:text-rose-700 cursor-pointer"
+                  >
+                    Премахни
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      ['bust', 'Бюст (см)'],
+                      ['waist', 'Талия (см)'],
+                      ['hips', 'Ханш (см)'],
+                      ['length', 'Дължина (см)'],
+                    ] as const
+                  ).map(([field, label]) => (
+                    <label key={field} className="space-y-1">
+                      <span className="text-[11px] font-medium text-neutral-500">{label}</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={row[field]}
+                        onChange={(event) => updateRow(row.id, { [field]: event.target.value })}
+                        className="w-full px-2.5 py-1.5 bg-neutral-50 border border-neutral-200 rounded-md text-sm text-neutral-900 focus:outline-none focus:border-emerald-600"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full min-w-[640px] text-xs border-collapse">
               <thead>
                 <tr className="text-left text-neutral-500">
