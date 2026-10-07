@@ -190,6 +190,22 @@ export default function App() {
   // Polling ref
   const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Helper to check if a task's remote CDN output signature is expired
+  const isTaskOutputExpired = (task?: GenerationTask | null): boolean => {
+    if (!task || !Array.isArray(task.outputUrls) || task.outputUrls.length === 0) return false;
+    const url = task.outputUrls[0];
+    if (!url) return false;
+    if (url.startsWith('/uploads/') || url.startsWith('data:') || url.startsWith('blob:')) return false;
+    const expiresMatch = url.match(/[?&]Expires=(\d+)/);
+    if (expiresMatch) {
+      const expiresSec = parseInt(expiresMatch[1], 10);
+      if (Date.now() / 1000 > expiresSec) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // Load history strictly scoped to the active access code
   const loadCodeHistory = async (validCode: string) => {
     if (!validCode) {
@@ -200,8 +216,9 @@ export default function App() {
 
     const localTasks = getStoredHistory(validCode);
     setHistory(localTasks);
-    if (localTasks.length > 0) {
-      setCurrentTask(localTasks[0]);
+    const validLocal = localTasks.find((t) => !isTaskOutputExpired(t));
+    if (validLocal) {
+      setCurrentTask(validLocal);
     } else {
       setCurrentTask(null);
     }
@@ -221,7 +238,11 @@ export default function App() {
       setHistory(merged);
       saveStoredHistory(validCode, merged);
       if (merged.length > 0) {
-        setCurrentTask((prev) => prev || merged[0]);
+        setCurrentTask((prev) => {
+          if (prev && !isTaskOutputExpired(prev)) return prev;
+          const fresh = merged.find((t) => !isTaskOutputExpired(t));
+          return fresh || null;
+        });
       }
     } catch (e) {
       console.warn('Could not load remote tasks:', e);

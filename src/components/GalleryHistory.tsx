@@ -145,6 +145,15 @@ export const GalleryHistory: React.FC<GalleryHistoryProps> = ({
                   </div>
                 </div>
 
+                {/* AI disclaimer directly under every generated result image */}
+                {output && (
+                  <div className="px-3 py-2 bg-neutral-50/80 border-t border-neutral-100">
+                    <p className="text-[12px] text-neutral-500 text-center leading-snug">
+                      Визуализация с AI – ориентировъчна. За точен размер вижте таблицата с мерки.
+                    </p>
+                  </div>
+                )}
+
                 {/* Details Footer */}
                 <div className="p-3 flex items-center justify-between text-xs text-neutral-500 border-t border-neutral-100">
                   <span className="font-medium text-neutral-800">

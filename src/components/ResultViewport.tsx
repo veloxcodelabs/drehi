@@ -108,10 +108,19 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
               <div className="flex flex-col items-center justify-center p-8 text-center text-neutral-500 space-y-3">
                 <ImageIcon className="w-8 h-8 text-neutral-400" />
                 <div>
-                  <p className="text-xs text-neutral-800 font-medium">Неуспешно зареждане на прегледа</p>
-                  <p className="text-[11px] text-neutral-400 mt-0.5">Връзката към изображението се забави или е временно недостъпна</p>
+                  <p className="text-xs text-neutral-800 font-semibold">Прегледът от тази сесия е изтекъл</p>
+                  <p className="text-[11px] text-neutral-400 mt-1 max-w-xs leading-relaxed">
+                    Временните изображения от сесията се съхраняват ограничено време. Можете да генерирате нова визия веднага.
+                  </p>
                 </div>
-                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={onRegenerate}
+                    className="px-4 py-2 text-xs font-semibold bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer shadow-xs"
+                  >
+                    Генерирай нова визия
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -120,27 +129,10 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
                       setHasTriedFallback(false);
                       setDisplaySrc(primaryOutput || proxyUrl || '');
                     }}
-                    className="px-3 py-1.5 text-xs bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
+                    className="px-3 py-2 text-xs bg-white border border-neutral-200 text-neutral-700 rounded-lg hover:bg-neutral-50 transition-colors cursor-pointer"
                   >
                     Опитай отново
                   </button>
-                  {primaryOutput && (
-                    <a
-                      href={primaryOutput}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 text-xs bg-white border border-neutral-200 text-neutral-800 rounded-lg hover:bg-neutral-50 transition-colors"
-                    >
-                      Отвори оригинала
-                    </a>
-                  )}
-                  <a
-                    href={downloadUrl || primaryOutput}
-                    download="martitony-style-lab.png"
-                    className="px-3 py-1.5 text-xs bg-white border border-neutral-200 text-neutral-800 rounded-lg hover:bg-neutral-50 transition-colors"
-                  >
-                    Свали файла директно
-                  </a>
                 </div>
               </div>
             ) : (
@@ -189,6 +181,13 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
         )}
       </div>
 
+      {/* Note directly under generated result image */}
+      {primaryOutput && (
+        <p className="text-center text-[12px] sm:text-[13px] text-neutral-500 leading-normal px-2">
+          Визуализация с AI – ориентировъчна. За точен размер вижте таблицата с мерки.
+        </p>
+      )}
+
       {/* Action and Info Bar */}
       {currentTask && (
         <div className="p-4 rounded-xl border border-neutral-200 bg-white space-y-3 shadow-xs">
@@ -231,8 +230,8 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
           </div>
 
           {/* Plain note under the result */}
-          <p className="text-center text-[11px] text-neutral-500 pt-1 leading-relaxed">
-            Изображението е създадено с AI и показва как приблизително би изглеждала дрехата върху Вас. За размера се водете по таблицата с мерки.
+          <p className="text-center text-[12px] sm:text-[13px] text-neutral-500 pt-1 leading-relaxed">
+            Визуализация с AI – ориентировъчна. За точен размер вижте таблицата с мерки.
           </p>
         </div>
       )}
@@ -258,6 +257,9 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
               className="max-h-[85vh] max-w-full rounded-lg object-contain shadow-2xl bg-white"
               onClick={(e) => e.stopPropagation()}
             />
+            <p className="text-center text-[12px] sm:text-[13px] text-neutral-300 mt-2 px-4">
+              Визуализация с AI – ориентировъчна. За точен размер вижте таблицата с мерки.
+            </p>
           </div>
         </div>
       )}

@@ -80,6 +80,27 @@ try {
   console.warn('Could not create uploads directory:', e);
 }
 
+const uploadsCacheDir = path.join(uploadsDir, 'cache');
+try {
+  if (!fs.existsSync(uploadsCacheDir)) {
+    fs.mkdirSync(uploadsCacheDir, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Could not create uploads cache directory:', e);
+}
+
+function getExpiredLookbookPlaceholderSvg(): string {
+  return `<svg width="600" height="800" viewBox="0 0 600 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="600" height="800" fill="#18181b"/>
+  <rect x="24" y="24" width="552" height="752" rx="16" stroke="#27272a" stroke-width="2"/>
+  <circle cx="300" cy="340" r="48" fill="#27272a"/>
+  <path d="M284 340h32M300 324v32" stroke="#71717a" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="300" y="426" text-anchor="middle" fill="#f4f4f5" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="15" font-weight="600" letter-spacing="0.06em">MARTITONY STYLE LAB</text>
+  <text x="300" y="460" text-anchor="middle" fill="#a1a1aa" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="13">Временният преглед от тази сесия е изтекъл</text>
+  <text x="300" y="490" text-anchor="middle" fill="#71717a" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="11.5">Натиснете „Генерирай“ за създаване на нова студийна визия</text>
+</svg>`;
+}
+
 // Serve uploaded user files
 app.use('/uploads', express.static(uploadsDir));
 
@@ -222,7 +243,7 @@ app.post('/api/upload', async (req: Request, res: Response) => {
   }
 });
 
-// Proxy for downloading/viewing generated outputs
+// Proxy for downloading/viewing generated outputs with local caching and expired link handling
 app.get('/api/proxy-image', async (req: Request, res: Response) => {
   try {
     let targetUrl = (req.query.url as string) || '';
@@ -270,6 +291,37 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
     // Validate protocol
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
       return res.status(400).send('Invalid url protocol');
+    }
+
+    const cleanPath = targetUrl.split('?')[0];
+    const urlHash = crypto.createHash('sha256').update(cleanPath).digest('hex').slice(0, 32);
+    const cachedFilePath = path.join(uploadsCacheDir, `${urlHash}.png`);
+
+    // Check if we already have a cached copy on disk
+    if (fs.existsSync(cachedFilePath)) {
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      if (req.query.download === 'true') {
+        res.setHeader('Content-Disposition', 'attachment; filename="martitony-style-lab.png"');
+      }
+      return res.sendFile(cachedFilePath);
+    }
+
+    // Check if the URL is an expired OSS URL
+    const expiresMatch = targetUrl.match(/[?&]Expires=(\d+)/);
+    const isExpired = Boolean(expiresMatch && parseInt(expiresMatch[1], 10) < Math.floor(Date.now() / 1000));
+    if (isExpired) {
+      console.log(`[Proxy image] Remote link expired for ${cleanPath}`);
+      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      if (req.query.download === 'true') {
+        res.setHeader('Content-Disposition', 'attachment; filename="martitony-lookbook-archived.svg"');
+      }
+      return res.status(200).send(getExpiredLookbookPlaceholderSvg());
     }
 
     const browserHeaders: Record<string, string> = {
@@ -328,11 +380,26 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
     }
 
     if (!response.ok) {
-      console.warn(`[Proxy image error] status=${response.status} text=${response.statusText} url=${targetUrl}`);
-      return res.status(response.status).send(`Failed to proxy image: ${response.statusText}`);
+      console.log(`[Proxy image] Remote host returned ${response.status} for ${cleanPath}`);
+      // Return beautiful fallback placeholder instead of crashing the UI or printing error warnings
+      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=600');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      return res.status(200).send(getExpiredLookbookPlaceholderSvg());
     }
 
     const contentType = response.headers.get('content-type') || 'image/png';
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Save to disk cache for future requests so it never breaks
+    try {
+      fs.writeFileSync(cachedFilePath, buffer);
+    } catch (writeErr) {
+      console.warn('[Proxy image] Cache write failed:', writeErr);
+    }
+
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -350,8 +417,7 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    return res.send(Buffer.from(arrayBuffer));
+    return res.send(buffer);
   } catch (error: any) {
     console.error('Proxy image error:', error);
     return res.status(500).send('Failed to fetch image: ' + error.message);
@@ -882,14 +948,48 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
         return res.json(responseData);
       }
 
+      let resolvedOutputs = Array.isArray(responseData?.result?.output) ? [...responseData.result.output] : [];
+      const primaryUrl = typeof resolvedOutputs[0] === 'string' ? resolvedOutputs[0] : '';
+
+      // Immediately cache generated output image to local disk so it is permanent and never expires
+      if (primaryUrl && primaryUrl.startsWith('http')) {
+        try {
+          const cachedFilename = `result_${taskId}.png`;
+          const localCachePath = path.join(uploadsDir, cachedFilename);
+          if (!fs.existsSync(localCachePath)) {
+            const imgRes = await fetch(primaryUrl, {
+              headers: {
+                'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+              },
+            });
+            if (imgRes.ok) {
+              const arrayBuf = await imgRes.arrayBuffer();
+              fs.writeFileSync(localCachePath, Buffer.from(arrayBuf));
+              console.log(`[Task Success] Permanently cached result image for task ${taskId}`);
+            }
+          }
+          if (fs.existsSync(localCachePath)) {
+            const localUrl = `/uploads/${cachedFilename}`;
+            resolvedOutputs = [localUrl, ...resolvedOutputs.filter((u) => u !== primaryUrl)];
+            if (responseData?.result) {
+              responseData.result.output = resolvedOutputs;
+            }
+          }
+        } catch (cacheErr) {
+          console.warn('[Task Success] Could not cache output locally:', cacheErr);
+        }
+      }
+
       const fin = await finalizeTaskResult(taskId, true, 'Task completed successfully', {
-        outputUrls: responseData?.result?.output || [],
+        outputUrls: resolvedOutputs,
         predictTime: responseData?.result?.predict_time,
         totalTime: responseData?.result?.total_time,
         completedAt: Date.now(),
       });
       await saveTaskSuccess(taskId, {
-        outputUrls: responseData?.result?.output || [],
+        outputUrls: resolvedOutputs,
         predictTime: responseData?.result?.predict_time,
         totalTime: responseData?.result?.total_time,
         completedAt: Date.now(),
