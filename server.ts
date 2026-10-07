@@ -222,14 +222,49 @@ app.post('/api/upload', async (req: Request, res: Response) => {
   }
 });
 
-// Proxy for downloading/viewing generated outputs that require Authorization header
+// Proxy for downloading/viewing generated outputs
 app.get('/api/proxy-image', async (req: Request, res: Response) => {
   try {
-    const targetUrl = req.query.url as string;
-    const token = getServerToken();
+    let targetUrl = (req.query.url as string) || '';
+
+    // If query string was split on unencoded '&', reconstruct full URL from originalUrl
+    if (req.originalUrl && req.originalUrl.includes('url=')) {
+      const idx = req.originalUrl.indexOf('url=');
+      let rawParam = req.originalUrl.slice(idx + 4);
+      // Strip download query parameter if attached at the end or beginning
+      if (rawParam.endsWith('&download=true') || rawParam.endsWith('?download=true')) {
+        rawParam = rawParam.slice(0, -14);
+      } else if (rawParam.startsWith('download=true&')) {
+        rawParam = rawParam.slice(14);
+      }
+      try {
+        const decoded = decodeURIComponent(rawParam);
+        if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+          targetUrl = decoded;
+        }
+      } catch {
+        if (rawParam.startsWith('http://') || rawParam.startsWith('https://')) {
+          targetUrl = rawParam;
+        }
+      }
+    }
 
     if (!targetUrl) {
       return res.status(400).send('Missing url parameter');
+    }
+
+    // Support local files if targetUrl is relative
+    if (targetUrl.startsWith('/uploads/')) {
+      const localPath = path.join(process.cwd(), targetUrl);
+      if (fs.existsSync(localPath)) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        if (req.query.download === 'true') {
+          res.setHeader('Content-Disposition', `attachment; filename="${path.basename(localPath)}"`);
+        }
+        return res.sendFile(localPath);
+      }
     }
 
     // Validate protocol
@@ -237,35 +272,81 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
       return res.status(400).send('Invalid url protocol');
     }
 
-    const headers: Record<string, string> = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+    const browserHeaders: Record<string, string> = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+    };
+
+    // Determine if the URL is an internal API endpoint requiring Bearer auth.
+    // Presigned S3/GCS/CDN URLs MUST NOT receive an Authorization header (AWS returns 400 Bad Request).
+    const token = getServerToken();
+    const isSignedOrCdn =
+      targetUrl.includes('X-Amz-') ||
+      targetUrl.includes('Signature=') ||
+      targetUrl.includes('s3.amazonaws.com') ||
+      targetUrl.includes('r2.cloudflarestorage.com') ||
+      targetUrl.includes('storage.googleapis.com') ||
+      targetUrl.includes('replicate.delivery');
+
+    let response: globalThis.Response;
+
+    if (token && !isSignedOrCdn && targetUrl.includes('api.vmodel.ai')) {
+      // First try with Auth for internal API domain
+      response = await fetch(targetUrl, {
+        headers: {
+          ...browserHeaders,
+          Authorization: `Bearer ${token}`,
+        },
+        redirect: 'follow',
+      });
+      if (!response.ok && (response.status === 401 || response.status === 403 || response.status === 400)) {
+        // Retry without auth
+        response = await fetch(targetUrl, {
+          headers: browserHeaders,
+          redirect: 'follow',
+        });
+      }
+    } else {
+      // Direct standard fetch without leaking Bearer token to CDNs
+      response = await fetch(targetUrl, {
+        headers: browserHeaders,
+        redirect: 'follow',
+      });
+
+      // If 401 on external endpoint and token exists, attempt fallback with token
+      if (!response.ok && response.status === 401 && token && !isSignedOrCdn) {
+        response = await fetch(targetUrl, {
+          headers: {
+            ...browserHeaders,
+            Authorization: `Bearer ${token}`,
+          },
+          redirect: 'follow',
+        });
+      }
     }
 
-    const response = await fetch(targetUrl, {
-      headers,
-    });
-
     if (!response.ok) {
-      // Try without bearer header if failed with bearer (some CDN links might not expect Auth)
-      if (token) {
-        const retryWithoutAuth = await fetch(targetUrl);
-        if (retryWithoutAuth.ok) {
-          const contentType = retryWithoutAuth.headers.get('content-type') || 'image/png';
-          res.setHeader('Content-Type', contentType);
-          res.setHeader('Cache-Control', 'public, max-age=86400');
-          const arrayBuffer = await retryWithoutAuth.arrayBuffer();
-          return res.send(Buffer.from(arrayBuffer));
-        }
-      }
+      console.warn(`[Proxy image error] status=${response.status} text=${response.statusText} url=${targetUrl}`);
       return res.status(response.status).send(`Failed to proxy image: ${response.statusText}`);
     }
 
     const contentType = response.headers.get('content-type') || 'image/png';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
     if (req.query.download === 'true') {
-      const filename = path.basename(new URL(targetUrl).pathname) || 'ai-picture.png';
+      let filename = 'martitony-style-lab.png';
+      try {
+        const pathname = new URL(targetUrl).pathname;
+        const base = path.basename(pathname);
+        if (base && base.includes('.')) filename = base;
+      } catch {
+        // fallback filename
+      }
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     }
 

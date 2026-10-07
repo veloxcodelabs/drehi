@@ -23,13 +23,21 @@ export function hashImage(
   return hashString(raw);
 }
 
+export type CacheImageInput = {
+  url?: string;
+  previewUrl?: string;
+  filename?: string;
+  size?: number;
+  id?: string;
+};
+
 /**
  * Computes consistency cache key:
  * key = hash(person photo) + hash(garment image) + chosen size + body measurements
  */
 export function buildConsistencyCacheKey(
-  personImg: UploadedImage | null | undefined,
-  garmentImg: UploadedImage | null | undefined,
+  personImg: CacheImageInput | null | undefined,
+  garmentImg: CacheImageInput | null | undefined,
   chosenSize: string | null | undefined,
   measurements: CustomerMeasurements | null | undefined
 ): string {

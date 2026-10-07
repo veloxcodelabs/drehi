@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Download, Maximize2, X, RefreshCw, Copy, Check, ArrowRight, ArrowRightCircle, Image as ImageIcon } from 'lucide-react';
 import { GenerationTask } from '../types';
 import { getProxyImageUrl } from '../lib/api';
@@ -26,6 +26,32 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
   const primaryOutput = currentTask?.outputUrls?.[0];
   const proxyUrl = primaryOutput ? getProxyImageUrl(primaryOutput) : '';
   const downloadUrl = primaryOutput ? getProxyImageUrl(primaryOutput, true) : '';
+
+  const [displaySrc, setDisplaySrc] = useState<string>('');
+  const [hasTriedFallback, setHasTriedFallback] = useState(false);
+
+  // Reset image state whenever the displayed output changes
+  useEffect(() => {
+    setImageLoaded(false);
+    setImageError(false);
+    setHasTriedFallback(false);
+    if (primaryOutput) {
+      setDisplaySrc(proxyUrl || primaryOutput);
+    } else {
+      setDisplaySrc('');
+    }
+  }, [primaryOutput, proxyUrl]);
+
+  const handleImageError = () => {
+    // If proxy failed, automatically attempt direct URL as fallback before giving up
+    if (!hasTriedFallback && primaryOutput && displaySrc !== primaryOutput) {
+      console.warn('[ResultViewport] Proxy image failed, falling back to direct URL:', primaryOutput);
+      setHasTriedFallback(true);
+      setDisplaySrc(primaryOutput);
+      return;
+    }
+    setImageError(true);
+  };
 
   const handleCopyUrl = () => {
     if (!primaryOutput) return;
@@ -79,24 +105,51 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
             )}
 
             {imageError ? (
-              <div className="flex flex-col items-center justify-center p-8 text-center text-neutral-500">
-                <ImageIcon className="w-8 h-8 text-neutral-400 mb-2" />
-                <p className="text-xs text-neutral-700 font-medium">Неуспешно зареждане на прегледа</p>
-                <a
-                  href={downloadUrl}
-                  download
-                  className="mt-2 text-xs text-emerald-700 hover:underline"
-                >
-                  Свали файла директно
-                </a>
+              <div className="flex flex-col items-center justify-center p-8 text-center text-neutral-500 space-y-3">
+                <ImageIcon className="w-8 h-8 text-neutral-400" />
+                <div>
+                  <p className="text-xs text-neutral-800 font-medium">Неуспешно зареждане на прегледа</p>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">Връзката към изображението се забави или е временно недостъпна</p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageError(false);
+                      setImageLoaded(false);
+                      setHasTriedFallback(false);
+                      setDisplaySrc(primaryOutput || proxyUrl || '');
+                    }}
+                    className="px-3 py-1.5 text-xs bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
+                  >
+                    Опитай отново
+                  </button>
+                  {primaryOutput && (
+                    <a
+                      href={primaryOutput}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 text-xs bg-white border border-neutral-200 text-neutral-800 rounded-lg hover:bg-neutral-50 transition-colors"
+                    >
+                      Отвори оригинала
+                    </a>
+                  )}
+                  <a
+                    href={downloadUrl || primaryOutput}
+                    download="martitony-style-lab.png"
+                    className="px-3 py-1.5 text-xs bg-white border border-neutral-200 text-neutral-800 rounded-lg hover:bg-neutral-50 transition-colors"
+                  >
+                    Свали файла директно
+                  </a>
+                </div>
               </div>
             ) : (
               <img
-                src={proxyUrl}
+                src={displaySrc || proxyUrl}
                 alt="Martitony Style Lab Визия"
                 referrerPolicy="no-referrer"
                 onLoad={() => setImageLoaded(true)}
-                onError={() => setImageError(true)}
+                onError={handleImageError}
                 className={`max-h-[640px] w-auto max-w-full object-contain transition-opacity duration-300 ${
                   imageLoaded ? 'opacity-100' : 'opacity-0'
                 }`}
@@ -199,7 +252,7 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
               <X className="w-5 h-5" />
             </button>
             <img
-              src={proxyUrl}
+              src={displaySrc || primaryOutput || proxyUrl}
               alt="Преглед на цял екран"
               referrerPolicy="no-referrer"
               className="max-h-[85vh] max-w-full rounded-lg object-contain shadow-2xl bg-white"

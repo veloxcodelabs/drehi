@@ -91,9 +91,14 @@ export const GalleryHistory: React.FC<GalleryHistoryProps> = ({
                 >
                   {output ? (
                     <img
-                      src={proxy}
+                      src={proxy || output}
                       alt="Модна визия"
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        if (output && e.currentTarget.src !== output) {
+                          e.currentTarget.src = output;
+                        }
+                      }}
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
                   ) : (
