@@ -18,6 +18,9 @@ import {
   isTaskOwnedByCode,
   addCreditsToCode,
   resetCodeUsage,
+  getCodeSizeChart,
+  saveCodeSizeChart,
+  isKnownAccessCode,
   UsageStoreError,
 } from './access_control.js';
 import { processSupportLetter, loadSubmissionPdf, getAllSubmissions } from './support_letter_service.js';
@@ -29,6 +32,7 @@ import {
   UNCONFIGURED_PUBLIC_MESSAGE,
 } from './generation_errors.js';
 import { applyExtraInstructions } from './extra_instructions.js';
+import { applyFitRequest, validateSizeChart } from './size_chart.js';
 import { IMAGE_TOO_LARGE_MESSAGE, isPublicHttpUrl, requestContainsImageData } from './image_payload.js';
 import {
   GARMENT_UNRECOGNIZED_MESSAGE,
@@ -437,8 +441,28 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
   try {
     const { version, simulate, webhook_url } = req.body;
     // Optional shopper note. Empty text leaves the prompt exactly as the client sent it.
-    const input = applyExtraInstructions(req.body?.input);
+    const notedInput = applyExtraInstructions(req.body?.input);
     const token = getServerToken();
+
+    const accessCode = sanitizeCode(
+      (req.body.accessCode as string) ||
+      (req.query.k as string) ||
+      (req.headers['x-access-code'] as string)
+    );
+
+    let input = notedInput;
+    if (notedInput && typeof notedInput === 'object' && 'fit_request' in notedInput) {
+      try {
+        const chart = await getCodeSizeChart(accessCode);
+        input = applyFitRequest(notedInput, chart);
+      } catch (error) {
+        console.error('[Size chart] could not read chart before generation', error);
+        return res.status(503).json({
+          error: STORAGE_PUBLIC_MESSAGE,
+          code: 'STORAGE_UNAVAILABLE',
+        });
+      }
+    }
 
     // Image bytes must never ride along in this JSON body. Refuse before a try is reserved.
     if (requestContainsImageData(input)) {
@@ -449,12 +473,6 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
     }
 
     // Strict access code enforcement. Client tokens are ignored.
-    const accessCode = sanitizeCode(
-      (req.body.accessCode as string) ||
-      (req.query.k as string) ||
-      (req.headers['x-access-code'] as string)
-    );
-
     const accessCheck = await reserveGeneration(accessCode);
     if (!accessCheck.allowed || !accessCheck.reservationId) {
       return res.status(accessCheck.statusCode).json({
@@ -1107,6 +1125,67 @@ app.get('/api/admin/codes/status', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[Access] status failed:', error);
     return res.status(503).json({ error: STORAGE_PUBLIC_MESSAGE });
+  }
+});
+
+function sizeChartError(error: unknown, res: Response) {
+  const message = error instanceof Error ? error.message : '';
+  if (/unknown access code/i.test(message)) {
+    return res.status(404).json({ error: 'Непознат код.' });
+  }
+  if (/invalid size chart/i.test(message)) {
+    return res.status(400).json({ error: 'Таблицата с размери е непълна.' });
+  }
+  console.error('[Size chart] request failed:', error);
+  return res.status(503).json({ error: STORAGE_PUBLIC_MESSAGE });
+}
+
+// GET /api/admin/codes/size-chart?code=test
+app.get('/api/admin/codes/size-chart', async (req: Request, res: Response) => {
+  if (!verifyAdmin(req)) {
+    return res.status(401).json({ error: 'Неоторизиран достъп.' });
+  }
+  const code = sanitizeCode(String(req.query.code || ''));
+  if (!code) {
+    return res.status(400).json({ error: 'Моля, въведете код.' });
+  }
+  if (!isKnownAccessCode(code)) {
+    return res.status(404).json({ error: 'Непознат код.' });
+  }
+  try {
+    const sizeChart = await getCodeSizeChart(code);
+    return res.json({ success: true, code, sizeChart });
+  } catch (error) {
+    return sizeChartError(error, res);
+  }
+});
+
+// POST /api/admin/codes/size-chart — save or clear the chart for one invite code.
+app.post('/api/admin/codes/size-chart', async (req: Request, res: Response) => {
+  if (!verifyAdmin(req)) {
+    return res.status(401).json({ error: 'Неоторизиран достъп.' });
+  }
+  const { code, sizeChart } = req.body || {};
+  if (!code || typeof code !== 'string') {
+    return res.status(400).json({ error: 'Моля, въведете валиден код.' });
+  }
+  if (sizeChart != null) {
+    const validated = validateSizeChart(sizeChart);
+    if (!validated.ok) {
+      return res.status(400).json({ error: validated.error });
+    }
+    try {
+      const saved = await saveCodeSizeChart(code, validated.chart);
+      return res.json({ success: true, ...saved });
+    } catch (error) {
+      return sizeChartError(error, res);
+    }
+  }
+  try {
+    const saved = await saveCodeSizeChart(code, null);
+    return res.json({ success: true, ...saved });
+  } catch (error) {
+    return sizeChartError(error, res);
   }
 });
 

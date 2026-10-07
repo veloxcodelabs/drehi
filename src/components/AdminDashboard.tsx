@@ -19,6 +19,7 @@ import {
   Tag,
   Hash,
 } from 'lucide-react';
+import { AdminSizeChart } from './AdminSizeChart';
 
 function adminAuthHeaders(adminToken: string): Record<string, string> {
   return {
@@ -384,6 +385,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
             <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{codeError}</p>
           )}
         </section>
+
+        <AdminSizeChart token={token} code={codeInput} onUnauthorized={handleLogout} />
 
         {/* Search & Statistics Bar */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white border border-neutral-200 rounded-xl p-3.5 shadow-xs">

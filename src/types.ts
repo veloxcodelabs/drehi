@@ -1,3 +1,5 @@
+import type { SizeChart } from '../size_chart';
+
 export type TaskStatus = 'starting' | 'processing' | 'succeeded' | 'failed' | 'canceled';
 
 export interface TaskApiResult {
@@ -28,6 +30,7 @@ export interface AccessCodeStatus {
   dailyRemaining: number;
   dailyLimitReached: boolean;
   message?: string;
+  sizeChart?: SizeChart | null;
 }
 
 export interface GenerationTask {

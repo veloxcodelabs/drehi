@@ -4,6 +4,7 @@ import {
   type UsageBackend,
 } from './usage_store.js';
 import type { Balance, RecentTask } from './usage_logic.js';
+import { parseSizeChart, type SizeChart } from './size_chart.js';
 
 /**
  * Server-side invite limits.
@@ -190,7 +191,30 @@ export async function checkAccessCode(rawCode?: string | null) {
     };
   }
   const balance = await backend().check(code, isKnownAccessCode(code));
-  return toPublicStatus(balance);
+  const status = toPublicStatus(balance);
+  if (!status.valid) return status;
+  const sizeChart = await backend().getSizeChart(code);
+  if (!sizeChart) return status;
+  return { ...status, sizeChart };
+}
+
+export async function getCodeSizeChart(rawCode?: string | null): Promise<SizeChart | null> {
+  const code = sanitizeCode(rawCode);
+  if (!code || !isKnownAccessCode(code)) return null;
+  return backend().getSizeChart(code);
+}
+
+export async function saveCodeSizeChart(rawCode: string, chart: SizeChart | null): Promise<{ code: string; sizeChart: SizeChart | null }> {
+  const code = sanitizeCode(rawCode);
+  if (!code || !isKnownAccessCode(code)) {
+    throw new UsageStoreError('Unknown access code');
+  }
+  const stored = chart ? parseSizeChart(chart) : null;
+  if (chart && !stored) {
+    throw new UsageStoreError('Invalid size chart');
+  }
+  await backend().setSizeChart(code, stored);
+  return { code, sizeChart: stored };
 }
 
 export interface ReservationDecision {

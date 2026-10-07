@@ -369,3 +369,134 @@ test('server enforces try limits, refunds failures, and keeps the API token serv
   assert.equal(loreen.data.remaining, 3);
   assert.equal(loreen.data.used, 0);
 });
+
+test('a size chart rides with the code and reaches the prompt only when measurements are sent', async () => {
+  const adminHeaders = {
+    'content-type': 'application/json',
+    'x-admin-password': 'test-admin-pass',
+  };
+  const unknownSave = await realFetch(`${base}/api/admin/codes/size-chart`, {
+    method: 'POST',
+    headers: adminHeaders,
+    body: JSON.stringify({
+      code: 'definitely-not-issued',
+      sizeChart: { fit: 'regular', sizes: [{ label: 'M', bust: 96, waist: 80, hips: 106, length: 90 }] },
+    }),
+  });
+  assert.equal(unknownSave.status, 404);
+
+  await reset('exza');
+  const before = await auth('exza');
+  assert.equal(before.data.remaining, 3);
+  assert.equal('sizeChart' in before.data, false);
+
+  const chart = {
+    fit: 'fitted',
+    sizes: [
+      { label: 'S', bust: 90, waist: 74, hips: 100, length: 90 },
+      { label: 'M', bust: 96, waist: 80, hips: 106, length: 83 },
+    ],
+  };
+  const saved = await realFetch(`${base}/api/admin/codes/size-chart`, {
+    method: 'POST',
+    headers: adminHeaders,
+    body: JSON.stringify({ code: 'EXZA', sizeChart: chart }),
+  });
+  const savedData = await saved.json();
+  assert.equal(saved.status, 200, JSON.stringify(savedData));
+
+  const withChart = await auth('exza');
+  assert.equal(withChart.data.remaining, 3);
+  assert.equal(withChart.data.used, 0);
+  assert.equal(withChart.data.sizeChart.fit, 'fitted');
+  assert.equal(withChart.data.sizeChart.sizes[1].bust, 96);
+
+  const skipped = await realFetch(`${base}/api/tasks/create`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-access-code': 'exza' },
+    body: JSON.stringify({ version: 'test-version', input: { prompt: 'lookbook' }, accessCode: 'exza' }),
+  });
+  const skippedData = await skipped.json();
+  assert.equal(skipped.status, 200, JSON.stringify(skippedData));
+  assert.equal(lastCreateBody?.input?.prompt, 'lookbook');
+  assert.equal('fit_request' in (lastCreateBody?.input || {}), false);
+  const skippedId = skippedData.result.task_id as string;
+  tasks.get(skippedId)!.status = 'failed';
+  tasks.get(skippedId)!.error = 'upstream blew up';
+  await poll(skippedId, 'exza');
+
+  const guided = await realFetch(`${base}/api/tasks/create`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-access-code': 'exza' },
+    body: JSON.stringify({
+      version: 'test-version',
+      input: {
+        prompt: 'lookbook',
+        img_urls: ['https://example.com/changed-photo.png', 'https://example.com/model-photo.png'],
+        fit_request: { size: 'M', height: 170, bust: 88, waist: 70, hips: 96 },
+      },
+      accessCode: 'exza',
+    }),
+  });
+  const guidedData = await guided.json();
+  assert.equal(guided.status, 200, JSON.stringify(guidedData));
+  const guidedPrompt = String(lastCreateBody?.input?.prompt || '');
+  assert.match(guidedPrompt, /first reference image is the garment/);
+  assert.match(guidedPrompt, /render size M from the fitted size chart/);
+  assert.match(guidedPrompt, /Bust: garment 96 cm, body 88 cm, difference 8 cm \(relaxed\)/);
+  assert.match(guidedPrompt, /hem falls above the knee/);
+  assert.match(guidedPrompt, /footwear exactly as in the second reference photo/);
+  assert.match(guidedPrompt, /cut, length/);
+  assert.equal('fit_request' in (lastCreateBody?.input || {}), false);
+  assert.equal('seed' in (lastCreateBody?.input || {}), false);
+  assert.equal('temperature' in (lastCreateBody?.input || {}), false);
+  const guidedId = guidedData.result.task_id as string;
+  tasks.get(guidedId)!.status = 'succeeded';
+  tasks.get(guidedId)!.output = ['https://example.com/changed-photo.png'];
+  const guidedPoll = await poll(guidedId, 'exza');
+  assert.equal(guidedPoll.data.result.status, 'succeeded');
+  assert.equal(guidedPoll.data.result.remaining, 2);
+
+  const after = await auth('exza');
+  assert.equal(after.data.used, 1);
+  assert.equal(after.data.remaining, 2);
+  assert.equal(after.data.sizeChart.sizes.length, 2);
+
+  await reset('alessa');
+  const uncharted = await realFetch(`${base}/api/tasks/create`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-access-code': 'alessa' },
+    body: JSON.stringify({
+      version: 'test-version',
+      input: {
+        prompt: 'lookbook',
+        fit_request: { size: 'M', height: 170, bust: 88, waist: 70, hips: 96 },
+      },
+      accessCode: 'alessa',
+    }),
+  });
+  assert.equal(uncharted.status, 200);
+  assert.equal(lastCreateBody?.input?.prompt, 'lookbook');
+  assert.equal('fit_request' in (lastCreateBody?.input || {}), false);
+  const unchartedData = await uncharted.json();
+  const unchartedId = unchartedData.result.task_id as string;
+  tasks.get(unchartedId)!.status = 'failed';
+  tasks.get(unchartedId)!.error = 'upstream blew up';
+  await poll(unchartedId, 'alessa');
+  const alessa = await auth('alessa');
+  assert.equal(alessa.data.used, 0);
+  assert.equal(alessa.data.remaining, 3);
+  assert.equal('sizeChart' in alessa.data, false);
+
+  const cleared = await realFetch(`${base}/api/admin/codes/size-chart`, {
+    method: 'POST',
+    headers: adminHeaders,
+    body: JSON.stringify({ code: 'exza', sizeChart: null }),
+  });
+  assert.equal(cleared.status, 200);
+  await reset('exza');
+  const clearedAuth = await auth('exza');
+  assert.equal('sizeChart' in clearedAuth.data, false);
+  assert.equal(clearedAuth.data.remaining, 3);
+  assert.equal(clearedAuth.data.used, 0);
+});
