@@ -14,6 +14,7 @@ import {
   hashString,
   hashImage,
   buildConsistencyCacheKey,
+  isTaskOutputExpired,
 } from './src/lib/tryonStorage.js';
 
 const SAMPLE_CHART: SizeChart = {
@@ -87,4 +88,30 @@ test('Consistency cache key format integrates image hashes, chosen size and meas
   // Different measurement yields different key
   const key4 = buildConsistencyCacheKey(personImg, garmentImg, 'M', { ...measurements, bust: 90 });
   assert.notEqual(key1, key4);
+});
+
+test('isTaskOutputExpired correctly identifies expired vs valid URLs', () => {
+  // Expired OSS signed URL (expires in year 2020)
+  const expiredTask: any = {
+    outputUrls: ['https://cdn.vmimgs.com/datarm/user/result/old.png?OSSAccessKeyId=KEY&Expires=1577836800&Signature=SIG'],
+  };
+  assert.equal(isTaskOutputExpired(expiredTask), true);
+
+  // Future OSS signed URL (expires in year 2040)
+  const futureTask: any = {
+    outputUrls: ['https://cdn.vmimgs.com/datarm/user/result/new.png?OSSAccessKeyId=KEY&Expires=2208988800&Signature=SIG'],
+  };
+  assert.equal(isTaskOutputExpired(futureTask), false);
+
+  // Local /uploads/ URL never expires
+  const localTask: any = {
+    outputUrls: ['/uploads/result_123.png'],
+  };
+  assert.equal(isTaskOutputExpired(localTask), false);
+
+  // Data / blob URL never expires
+  const dataTask: any = {
+    outputUrls: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='],
+  };
+  assert.equal(isTaskOutputExpired(dataTask), false);
 });

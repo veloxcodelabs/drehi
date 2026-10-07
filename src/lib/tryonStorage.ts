@@ -48,14 +48,44 @@ export function buildConsistencyCacheKey(
   return `tryon_cc_${pHash}_${gHash}_${sizeKey}_${mKey}`;
 }
 
+export function isTaskOutputExpired(task?: GenerationTask | null): boolean {
+  if (!task || !Array.isArray(task.outputUrls) || task.outputUrls.length === 0) return false;
+  const url = task.outputUrls[0];
+  if (!url) return false;
+  if (url.startsWith('/uploads/') || url.startsWith('data:') || url.startsWith('blob:')) return false;
+  const expiresMatch = url.match(/[?&]Expires=(\d+)/i);
+  if (expiresMatch) {
+    const expiresSec = parseInt(expiresMatch[1], 10);
+    if (Date.now() / 1000 > expiresSec) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const CONSISTENCY_CACHE_PREFIX = 'martitony_cc_v1_';
+
+export function removeCachedTryOnResult(cacheKey: string): void {
+  if (typeof window === 'undefined' || !cacheKey) return;
+  try {
+    localStorage.removeItem(`${CONSISTENCY_CACHE_PREFIX}${cacheKey}`);
+  } catch (err) {
+    console.warn('Could not remove try-on consistency cache:', err);
+  }
+}
 
 export function getCachedTryOnResult(cacheKey: string): GenerationTask | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(`${CONSISTENCY_CACHE_PREFIX}${cacheKey}`);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const task = JSON.parse(raw) as GenerationTask;
+    if (isTaskOutputExpired(task)) {
+      // Automatically evict expired cached task so subsequent generations never get blocked
+      removeCachedTryOnResult(cacheKey);
+      return null;
+    }
+    return task;
   } catch (err) {
     console.warn('Could not read try-on consistency cache:', err);
     return null;

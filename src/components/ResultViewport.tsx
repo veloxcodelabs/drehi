@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Download, Maximize2, X, RefreshCw, Copy, Check, ArrowRight, ArrowRightCircle, Image as ImageIcon } from 'lucide-react';
 import { GenerationTask } from '../types';
 import { getProxyImageUrl } from '../lib/api';
+import { isTaskOutputExpired } from '../lib/tryonStorage';
 
 interface ResultViewportProps {
   currentTask: GenerationTask | null;
@@ -33,19 +34,27 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
   // Reset image state whenever the displayed output changes
   useEffect(() => {
     setImageLoaded(false);
-    setImageError(false);
     setHasTriedFallback(false);
+    if (currentTask && isTaskOutputExpired(currentTask)) {
+      setImageError(true);
+      setDisplaySrc('');
+      return;
+    }
+    setImageError(false);
     if (primaryOutput) {
       setDisplaySrc(proxyUrl || primaryOutput);
     } else {
       setDisplaySrc('');
     }
-  }, [primaryOutput, proxyUrl]);
+  }, [primaryOutput, proxyUrl, currentTask]);
 
   const handleImageError = () => {
+    if (isTaskOutputExpired(currentTask)) {
+      setImageError(true);
+      return;
+    }
     // If proxy failed, automatically attempt direct URL as fallback before giving up
     if (!hasTriedFallback && primaryOutput && displaySrc !== primaryOutput) {
-      console.warn('[ResultViewport] Proxy image failed, falling back to direct URL:', primaryOutput);
       setHasTriedFallback(true);
       setDisplaySrc(primaryOutput);
       return;
@@ -121,18 +130,6 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
                   >
                     Генерирай нова визия
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImageError(false);
-                      setImageLoaded(false);
-                      setHasTriedFallback(false);
-                      setDisplaySrc(primaryOutput || proxyUrl || '');
-                    }}
-                    className="px-3 py-2 text-xs bg-white border border-neutral-200 text-neutral-700 rounded-lg hover:bg-neutral-50 transition-colors cursor-pointer"
-                  >
-                    Опитай отново
-                  </button>
                 </div>
               </div>
             ) : (
@@ -149,32 +146,34 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
             )}
 
             {/* Quick Action Overlay */}
-            <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/95 backdrop-blur-md p-1 rounded-lg border border-neutral-200 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setLightboxOpen(true)}
-                className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
-                title="Цял екран"
-              >
-                <Maximize2 className="w-4 h-4" />
-              </button>
-              <a
-                href={downloadUrl}
-                download="martitony-style-lab.png"
-                className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
-                title="Свали изображението"
-              >
-                <Download className="w-4 h-4" />
-              </a>
-              <button
-                type="button"
-                onClick={handleCopyUrl}
-                className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
-                title="Копирай линк"
-              >
-                {copiedUrl ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
+            {!imageError && imageLoaded && (
+              <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/95 backdrop-blur-md p-1 rounded-lg border border-neutral-200 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setLightboxOpen(true)}
+                  className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
+                  title="Цял екран"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+                <a
+                  href={downloadUrl}
+                  download="martitony-style-lab.png"
+                  className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
+                  title="Свали изображението"
+                >
+                  <Download className="w-4 h-4" />
+                </a>
+                <button
+                  type="button"
+                  onClick={handleCopyUrl}
+                  className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors cursor-pointer"
+                  title="Копирай линк"
+                >
+                  {copiedUrl ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <div className="text-center p-8 text-neutral-400 text-xs">Няма върнато изображение</div>
@@ -182,14 +181,14 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
       </div>
 
       {/* Note directly under generated result image */}
-      {primaryOutput && (
+      {primaryOutput && !imageError && (
         <p className="text-center text-[12px] sm:text-[13px] text-neutral-500 leading-normal px-2">
           Визуализация с AI – ориентировъчна. За точен размер вижте таблицата с мерки.
         </p>
       )}
 
       {/* Action and Info Bar */}
-      {currentTask && (
+      {currentTask && !imageError && (
         <div className="p-4 rounded-xl border border-neutral-200 bg-white space-y-3 shadow-xs">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-semibold text-neutral-800">

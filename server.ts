@@ -103,6 +103,9 @@ function getExpiredLookbookPlaceholderSvg(): string {
 
 // Serve uploaded user files
 app.use('/uploads', express.static(uploadsDir));
+app.use('/uploads', (_req, res) => {
+  res.status(404).send('Upload not found');
+});
 
 // In-memory store for simulated demo tasks
 interface SimulatedTask {

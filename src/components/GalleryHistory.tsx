@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Search, Trash2, ArrowUpRight, Download, Image as ImageIcon } from 'lucide-react';
+import { Search, Trash2, ArrowUpRight, Download, Image as ImageIcon, Clock } from 'lucide-react';
 import { GenerationTask } from '../types';
 import { getProxyImageUrl } from '../lib/api';
+import { isTaskOutputExpired } from '../lib/tryonStorage';
 
 interface GalleryHistoryProps {
   tasks: GenerationTask[];
@@ -89,18 +90,22 @@ export const GalleryHistory: React.FC<GalleryHistoryProps> = ({
                   className="aspect-[3/4] relative bg-neutral-100 overflow-hidden cursor-pointer"
                   onClick={() => onSelectTask(task)}
                 >
-                  {output ? (
+                  {output && !isTaskOutputExpired(task) ? (
                     <img
                       src={proxy || output}
                       alt="Модна визия"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
-                        if (output && e.currentTarget.src !== output) {
-                          e.currentTarget.src = output;
-                        }
+                        e.currentTarget.style.display = 'none';
                       }}
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
+                  ) : output && isTaskOutputExpired(task) ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-neutral-100 text-neutral-400 text-xs">
+                      <Clock className="w-6 h-6 mb-1 text-neutral-300" />
+                      <span className="font-medium text-neutral-600">Прегледът е изтекъл</span>
+                      <span className="text-[10px] text-neutral-400 mt-0.5">Временната сесия е архивирана</span>
+                    </div>
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-neutral-400 text-xs">
                       Няма налично изображение
@@ -120,7 +125,7 @@ export const GalleryHistory: React.FC<GalleryHistoryProps> = ({
                     >
                       <ArrowUpRight className="w-4 h-4" />
                     </button>
-                    {output && (
+                    {output && !isTaskOutputExpired(task) && (
                       <a
                         href={downloadUrl}
                         download="martitony-style-lab.png"
@@ -146,7 +151,7 @@ export const GalleryHistory: React.FC<GalleryHistoryProps> = ({
                 </div>
 
                 {/* AI disclaimer directly under every generated result image */}
-                {output && (
+                {output && !isTaskOutputExpired(task) && (
                   <div className="px-3 py-2 bg-neutral-50/80 border-t border-neutral-100">
                     <p className="text-[12px] text-neutral-500 text-center leading-snug">
                       Визуализация с AI – ориентировъчна. За точен размер вижте таблицата с мерки.
