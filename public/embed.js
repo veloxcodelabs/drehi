@@ -263,37 +263,58 @@
     modalIframe = modalContainer.querySelector('.msl-modal-iframe');
     var closeBtn = modalContainer.querySelector('.msl-modal-close');
 
-    closeBtn.addEventListener('click', closeModal);
+    if (closeBtn) {
+      closeBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeModal();
+      });
+    }
+
     modalContainer.addEventListener('click', function (e) {
       if (e.target === modalContainer) {
+        e.preventDefault();
+        e.stopPropagation();
         closeModal();
-      }
-    });
-
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' || e.keyCode === 27) {
-        if (modalContainer && modalContainer.style.display !== 'none') {
-          closeModal();
-        }
       }
     });
   }
 
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' || e.keyCode === 27) {
+      if (modalContainer) {
+        e.preventDefault();
+        closeModal();
+      }
+    }
+  });
+
   function openModal(imgUrl) {
+    if (modalContainer) {
+      closeModal();
+    }
     ensureModal();
     var targetUrl = originUrl + '/?k=' + encodeURIComponent(defaultCode) +
                     '&g=' + encodeURIComponent(imgUrl) +
                     '&embed=1';
-    modalIframe.src = targetUrl;
-    modalContainer.style.display = 'flex';
+    if (modalIframe) {
+      modalIframe.src = targetUrl;
+    }
     document.body.classList.add('msl-no-scroll');
   }
 
   function closeModal() {
-    if (!modalContainer) return;
-    modalContainer.style.display = 'none';
-    if (modalIframe) {
-      modalIframe.src = 'about:blank';
+    if (modalContainer) {
+      if (modalIframe) {
+        try {
+          modalIframe.src = 'about:blank';
+        } catch (e) {}
+      }
+      if (modalContainer.parentNode) {
+        modalContainer.parentNode.removeChild(modalContainer);
+      }
+      modalContainer = null;
+      modalIframe = null;
     }
     document.body.classList.remove('msl-no-scroll');
   }

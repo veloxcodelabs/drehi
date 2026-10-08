@@ -88,7 +88,14 @@ test('embed.js exists in public directory and contains required MSL integration 
   assert.match(content, /data-zoom-image/, 'embed.js should check high-res zoom attributes');
   assert.match(content, /MutationObserver/, 'embed.js should use MutationObserver for dynamic Next.js sites');
   assert.match(content, /embed=1/, 'embed.js should open iframe with embed=1 parameter');
-  assert.match(content, /Пробвай онлайн/, 'embed.js button text should be "Пробвай онлайн"');
+  assert.match(content, /removeChild\(modalContainer\)/, 'embed.js should remove modalContainer from DOM on close');
+});
+
+test('App in embed=1 mode does not restore previous task to currentTask', () => {
+  const appPath = path.resolve(__dirname, 'src', 'App.tsx');
+  const content = fs.readFileSync(appPath, 'utf8');
+  assert.match(content, /!isEmbed && localTasks\.length > 0/, 'Should not restore local tasks in embed mode');
+  assert.match(content, /!isEmbed && merged\.length > 0/, 'Should not restore merged tasks in embed mode');
 });
 
 test('embed-demo.html exists in public directory and contains boutique mockup', () => {

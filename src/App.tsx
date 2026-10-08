@@ -226,7 +226,7 @@ export default function App() {
 
     const localTasks = getStoredHistory(validCode);
     setHistory(localTasks);
-    if (localTasks.length > 0) {
+    if (!isEmbed && localTasks.length > 0) {
       setCurrentTask(localTasks[0]);
     } else {
       setCurrentTask(null);
@@ -246,7 +246,7 @@ export default function App() {
       );
       setHistory(merged);
       saveStoredHistory(validCode, merged);
-      if (merged.length > 0) {
+      if (!isEmbed && merged.length > 0) {
         setCurrentTask((prev) => prev || merged[0]);
       }
     } catch (e) {
