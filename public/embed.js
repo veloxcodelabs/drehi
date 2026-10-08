@@ -20,7 +20,7 @@
     return null;
   })();
 
-  var defaultCode = (scriptTag && (scriptTag.getAttribute('data-code') || scriptTag.getAttribute('data-k'))) || 'julia';
+  var defaultCode = (scriptTag && (scriptTag.getAttribute('data-code') || scriptTag.getAttribute('data-k'))) || 'test';
   var customSelector = scriptTag ? scriptTag.getAttribute('data-selector') : null;
 
   var originUrl = (function () {

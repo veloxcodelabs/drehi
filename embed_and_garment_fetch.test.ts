@@ -98,7 +98,7 @@ test('embed-demo.html exists in public directory and contains boutique mockup', 
   const content = fs.readFileSync(demoPath, 'utf8');
   assert.match(content, /product-image/, 'embed-demo.html should have .product-image container');
   assert.match(content, /embed\.js/, 'embed-demo.html should include embed.js script');
-  assert.match(content, /data-code="julia"/, 'embed-demo.html should configure data-code="julia"');
+  assert.match(content, /data-code="test"/, 'embed-demo.html should configure data-code="test"');
   assert.match(content, /data-selector="\.product-image img"/, 'embed-demo.html should configure selector');
 });
 
@@ -154,7 +154,7 @@ test('HTTP endpoint /api/fetch-garment and static files via Express', async () =
     assert.equal(demoRes.status, 200);
     const demoContent = await demoRes.text();
     assert.match(demoContent, /Boutique Noir/);
-    assert.match(demoContent, /data-code="julia"/);
+    assert.match(demoContent, /data-code="test"/);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
