@@ -13,6 +13,7 @@ interface GarmentSideSectionProps {
   chosenSize: string | null;
   onChosenSizeChange: (size: string) => void;
   recommendedSize: string | null;
+  isLoadingGarment?: boolean;
 }
 
 function isImageFile(file: File): boolean {
@@ -28,6 +29,7 @@ export const GarmentSideSection: React.FC<GarmentSideSectionProps> = ({
   chosenSize,
   onChosenSizeChange,
   recommendedSize,
+  isLoadingGarment,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -186,10 +188,12 @@ export const GarmentSideSection: React.FC<GarmentSideSectionProps> = ({
                 className="hidden"
                 onChange={(e) => handleFileSelect(e.target.files)}
               />
-              {isUploading ? (
+              {isUploading || isLoadingGarment ? (
                 <div className="flex flex-col items-center gap-2">
                   <Loader2 className="w-5 h-5 text-neutral-900 animate-spin" />
-                  <span className="text-xs text-neutral-500">Качване на снимката...</span>
+                  <span className="text-xs text-neutral-500">
+                    {isLoadingGarment ? 'Зареждане на снимката от магазина...' : 'Качване на снимката...'}
+                  </span>
                 </div>
               ) : (
                 <>

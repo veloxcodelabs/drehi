@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import dns from 'dns';
 import {
   checkAccessCode,
   reserveGeneration,
@@ -82,6 +83,8 @@ try {
 
 // Serve uploaded user files
 app.use('/uploads', express.static(uploadsDir));
+// Serve public assets (e.g. /embed.js, /embed-demo.html)
+app.use(express.static(path.resolve(__dirname, 'public')));
 
 // In-memory store for simulated demo tasks
 interface SimulatedTask {
@@ -274,6 +277,224 @@ app.get('/api/proxy-image', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Proxy image error:', error);
     return res.status(500).send('Failed to fetch image: ' + error.message);
+  }
+});
+
+// SSRF Protection Helpers
+export function isPrivateOrInternalIp(rawIp: string): boolean {
+  if (!rawIp) return true;
+  let ip = rawIp.trim();
+  if (ip.startsWith('::ffff:')) {
+    ip = ip.replace('::ffff:', '');
+  }
+
+  // IPv6 checks
+  const lower = ip.toLowerCase();
+  if (lower === '::1' || lower === '::' || lower === '0.0.0.0') return true;
+  if (lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd')) {
+    return true;
+  }
+
+  // IPv4 checks
+  const parts = ip.split('.').map(Number);
+  if (parts.length === 4 && parts.every((n) => !isNaN(n) && n >= 0 && n <= 255)) {
+    const [a, b] = parts;
+    if (a === 127) return true; // Loopback 127.0.0.0/8
+    if (a === 10) return true;  // Private 10.0.0.0/8
+    if (a === 172 && b >= 16 && b <= 31) return true; // Private 172.16.0.0/12
+    if (a === 192 && b === 168) return true; // Private 192.168.0.0/16
+    if (a === 169 && b === 254) return true; // Link-local 169.254.0.0/16
+    if (a === 100 && b >= 64 && b <= 127) return true; // Carrier-grade NAT
+    if (a === 0) return true; // 0.0.0.0/8
+    if (a >= 224) return true; // Multicast & reserved
+  }
+
+  return false;
+}
+
+export async function validateGarmentTargetUrl(urlString: string): Promise<{ ok: boolean; error?: string; url?: URL }> {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    return { ok: false, error: 'Невалиден URL адрес на снимката.' };
+  }
+
+  if (parsed.protocol !== 'https:') {
+    return { ok: false, error: 'Разрешени са само сигурни адреси (HTTPS).' };
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.internal') ||
+    hostname.endsWith('.lan') ||
+    hostname === '0.0.0.0'
+  ) {
+    return { ok: false, error: 'Забранен адрес (локален или вътрешен мрежов ресурс).' };
+  }
+
+  try {
+    const addresses = await dns.promises.lookup(hostname, { all: true });
+    for (const entry of addresses) {
+      if (isPrivateOrInternalIp(entry.address)) {
+        return { ok: false, error: 'Забранен адрес (вътрешен мрежов ресурс).' };
+      }
+    }
+  } catch (err: any) {
+    return { ok: false, error: 'Неуспешно свързване с домейна на снимката: ' + (err.message || 'DNS грешка') };
+  }
+
+  return { ok: true, url: parsed };
+}
+
+// OPTIONS for fetch-garment (CORS)
+app.options('/api/fetch-garment', (_req: Request, res: Response) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  return res.status(204).end();
+});
+
+// Endpoint to fetch remote garment image safely without CORS issues
+app.get('/api/fetch-garment', async (req: Request, res: Response) => {
+  try {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    const targetUrl = req.query.url as string;
+    if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.trim()) {
+      return res.status(400).json({ error: 'Липсва параметър url.' });
+    }
+
+    const trimmedUrl = targetUrl.trim();
+
+    // Validate initial URL
+    const validation = await validateGarmentTargetUrl(trimmedUrl);
+    if (!validation.ok || !validation.url) {
+      return res.status(400).json({ error: validation.error || 'Невалиден адрес на снимката.' });
+    }
+
+    const controller = new AbortController();
+    const timeoutMs = 10000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    let currentUrl = trimmedUrl;
+    let redirectCount = 0;
+    let response: any = null;
+
+    try {
+      while (redirectCount < 4) {
+        response = await fetch(currentUrl, {
+          signal: controller.signal,
+          redirect: 'manual',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 MartitonyStyleLab/1.0',
+            'Accept': 'image/jpeg,image/png,image/webp,image/*;q=0.8',
+          },
+        });
+
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+          redirectCount++;
+          const locationHeader = response.headers.get('location');
+          if (!locationHeader) {
+            return res.status(502).json({ error: 'Пренасочване без посочен нов адрес.' });
+          }
+          const resolvedRedirect = new URL(locationHeader, currentUrl).href;
+          const redirectValidation = await validateGarmentTargetUrl(resolvedRedirect);
+          if (!redirectValidation.ok) {
+            return res.status(400).json({ error: redirectValidation.error || 'Забранено пренасочване към вътрешен адрес.' });
+          }
+          currentUrl = resolvedRedirect;
+          continue;
+        }
+
+        break;
+      }
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (!response || !response.ok) {
+      return res.status(response?.status || 502).json({
+        error: `Неуспешно изтегляне на снимката от магазина (HTTP ${response?.status || 502}).`,
+      });
+    }
+
+    // Validate Content-Type: only image/jpeg, image/png, image/webp
+    const contentType = response.headers.get('content-type') || '';
+    const rawMime = contentType.split(';')[0].trim().toLowerCase();
+    const ALLOWED_MIMES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!ALLOWED_MIMES.includes(rawMime)) {
+      return res.status(400).json({
+        error: `Невалиден формат на файла (${rawMime || 'неизвестен'}). Поддържат се само JPEG, PNG и WebP.`,
+      });
+    }
+
+    // Check Content-Length if present
+    const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+    const contentLength = response.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > MAX_BYTES) {
+      return res.status(400).json({
+        error: 'Снимката надвишава максимално допустимия размер от 10 MB.',
+      });
+    }
+
+    // Read response buffer and enforce max size
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    if (buffer.length > MAX_BYTES) {
+      return res.status(400).json({
+        error: 'Снимката надвишава максимално допустимия размер от 10 MB.',
+      });
+    }
+
+    // Save locally
+    let ext = 'jpg';
+    if (rawMime.includes('png')) ext = 'png';
+    else if (rawMime.includes('webp')) ext = 'webp';
+
+    const uniqueId = crypto.randomBytes(8).toString('hex');
+    let baseName = 'garment';
+    try {
+      const urlPath = new URL(currentUrl).pathname;
+      const parsedBase = path.basename(urlPath).replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+      if (parsedBase) baseName = parsedBase;
+    } catch {}
+
+    const filename = `${baseName}_${Date.now()}_${uniqueId}.${ext}`;
+    const filePath = path.join(uploadsDir, filename);
+    fs.writeFileSync(filePath, buffer);
+
+    const baseUrl = getBaseUrl(req);
+    const localUrl = `${baseUrl}/uploads/${filename}`;
+    const directCdnUrl = await ensurePublicImageUrl(filePath);
+
+    // If raw requested
+    const format = (req.query.format as string) || '';
+    const acceptHeader = req.headers.accept || '';
+    if (format === 'raw' || (acceptHeader.includes('image/') && !acceptHeader.includes('application/json'))) {
+      res.setHeader('Content-Type', rawMime === 'image/jpg' ? 'image/jpeg' : rawMime);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(buffer);
+    }
+
+    return res.json({
+      ok: true,
+      url: directCdnUrl || localUrl,
+      previewUrl: localUrl,
+      localUrl,
+      filename,
+      size: buffer.length,
+      mime: rawMime,
+    });
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      return res.status(504).json({ error: 'Времето за изтегляне на снимката изтече (лимит 10 секунди).' });
+    }
+    console.error('Error fetching garment from URL:', err);
+    return res.status(500).json({ error: 'Грешка при изтегляне на снимката: ' + (err.message || 'неизвестна грешка') });
   }
 });
 

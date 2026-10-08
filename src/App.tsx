@@ -61,13 +61,39 @@ function extractCodeFromUrl(): string {
   return '';
 }
 
+function extractGarmentUrlFromUrl(): string {
+  if (typeof window === 'undefined') return '';
+  const searchParams = new URLSearchParams(window.location.search);
+  const g = searchParams.get('g');
+  if (g) return g.trim();
+  if (window.location.hash.includes('g=')) {
+    const hashPart = window.location.hash.split('?')[1] || '';
+    const hashParams = new URLSearchParams(hashPart);
+    const hg = hashParams.get('g');
+    if (hg) return hg.trim();
+  }
+  return '';
+}
+
+function isEmbedMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  const searchParams = new URLSearchParams(window.location.search);
+  const embed = searchParams.get('embed');
+  if (embed === '1' || embed === 'true') return true;
+  if (window.location.hash.includes('embed=1')) return true;
+  return false;
+}
+
 export default function App() {
+  const [isEmbed] = useState<boolean>(() => isEmbedMode());
   const [activeTab, setActiveTab] = useState<'generate' | 'gallery'>('generate');
   const [hasServerToken, setHasServerToken] = useState(true);
   const [isSimulating, setIsSimulating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [supportLetterOpen, setSupportLetterOpen] = useState(false);
   const [supportLetterImage, setSupportLetterImage] = useState<string | undefined>(undefined);
+  const [isLoadingGarmentUrl, setIsLoadingGarmentUrl] = useState(false);
+  const [garmentNotice, setGarmentNotice] = useState<string | null>(null);
 
   // Simple routing for /admin
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -262,6 +288,36 @@ export default function App() {
       .catch((err) => {
         console.warn('Config load notice:', err);
       });
+
+    // Auto-load garment image from URL parameter ?g=URL
+    const urlGarment = extractGarmentUrlFromUrl();
+    if (urlGarment) {
+      setIsLoadingGarmentUrl(true);
+      fetch(`/api/fetch-garment?url=${encodeURIComponent(urlGarment)}`)
+        .then(async (res) => {
+          const data = await res.json().catch(() => null);
+          if (res.ok && data?.ok) {
+            setGarmentImage({
+              id: 'garment-url-' + Date.now(),
+              url: data.url,
+              previewUrl: data.previewUrl || data.url,
+              filename: data.filename || 'garment.jpg',
+              size: data.size || 0,
+            });
+            setGarmentNotice('Снимката на дрехата е заредена автоматично от онлайн магазина.');
+          } else {
+            const err = data?.error || 'Снимката на дрехата не можа да се зареди автоматично. Моля, качете я ръчно.';
+            setGeneralError(err);
+          }
+        })
+        .catch((err) => {
+          console.warn('Auto-fetch garment failed:', err);
+          setGeneralError('Снимката на дрехата не можа да се зареди автоматично. Моля, качете я ръчно.');
+        })
+        .finally(() => {
+          setIsLoadingGarmentUrl(false);
+        });
+    }
   }, []);
 
   const handleApplyCode = async (code: string) => {
@@ -572,20 +628,30 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FBFBFA] text-neutral-900 flex flex-col font-sans selection:bg-emerald-100 selection:text-emerald-900">
-      {/* Top Bar Header */}
-      <Header
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        historyCount={history.length}
-        onOpenAdmin={() => navigateTo('/admin')}
-        hasValidCode={accessStatus.valid}
-        accessCode={accessStatus.code}
-        remainingGenerations={accessStatus.remaining}
-      />
+    <div
+      className={`min-h-screen text-neutral-900 flex flex-col font-sans selection:bg-emerald-100 selection:text-emerald-900 ${
+        isEmbed ? 'bg-white p-1 sm:p-2' : 'bg-[#FBFBFA]'
+      }`}
+    >
+      {/* Top Bar Header (hidden in embed mode) */}
+      {!isEmbed && (
+        <Header
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          historyCount={history.length}
+          onOpenAdmin={() => navigateTo('/admin')}
+          hasValidCode={accessStatus.valid}
+          accessCode={accessStatus.code}
+          remainingGenerations={accessStatus.remaining}
+        />
+      )}
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+      <main
+        className={`flex-1 w-full mx-auto ${
+          isEmbed ? 'p-1 sm:p-3 space-y-4 max-w-full' : 'max-w-7xl px-4 sm:px-6 py-6 sm:py-8 space-y-6'
+        }`}
+      >
         {/* Tab 1: Studio Generator */}
         {activeTab === 'generate' && (
           <div className="space-y-6">
@@ -611,6 +677,21 @@ export default function App() {
                     </div>
                   )}
 
+                  {/* Garment Auto-load Notice */}
+                  {garmentNotice && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between gap-2 shadow-xs">
+                      <span className="font-medium">{garmentNotice}</span>
+                      <button
+                        type="button"
+                        onClick={() => setGarmentNotice(null)}
+                        className="text-emerald-700 hover:text-emerald-950 font-bold px-1.5 py-0.5 rounded cursor-pointer"
+                        title="Затвори"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
                   {/* Studio Container */}
                   <div className="p-5 sm:p-6 rounded-2xl border border-neutral-200 bg-white shadow-xs space-y-6">
                     {/* Section 1: Garment Side (Photo on Left, "Мерки на дрехата" on Right) */}
@@ -622,6 +703,7 @@ export default function App() {
                       chosenSize={chosenSize}
                       onChosenSizeChange={setChosenSize}
                       recommendedSize={recommendation.recommendedSize}
+                      isLoadingGarment={isLoadingGarmentUrl}
                     />
 
                     <hr className="border-neutral-100" />
@@ -770,34 +852,36 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-neutral-200 bg-white py-6 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-neutral-900 uppercase tracking-tight">
-              Martitony Style Lab
-            </span>
-            <span aria-hidden="true">·</span>
-            <span>Дигитално студио за модна фотография за бутици и брандове</span>
-          </div>
+      {/* Footer (hidden in embed mode) */}
+      {!isEmbed && (
+        <footer className="border-t border-neutral-200 bg-white py-6 mt-12">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-neutral-900 uppercase tracking-tight">
+                Martitony Style Lab
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>Дигитално студио за модна фотография за бутици и брандове</span>
+            </div>
 
-          <div className="flex items-center gap-4">
-            <a
-              href="mailto:info@martitony.com"
-              className="hover:text-emerald-700 transition-colors flex items-center gap-1.5"
-            >
-              <Mail className="w-3.5 h-3.5 text-neutral-400" />
-              <span>info@martitony.com</span>
-            </a>
-            <button
-              onClick={() => navigateTo('/admin')}
-              className="hover:text-emerald-700 transition-colors cursor-pointer"
-            >
-              Администрация
-            </button>
+            <div className="flex items-center gap-4">
+              <a
+                href="mailto:info@martitony.com"
+                className="hover:text-emerald-700 transition-colors flex items-center gap-1.5"
+              >
+                <Mail className="w-3.5 h-3.5 text-neutral-400" />
+                <span>info@martitony.com</span>
+              </a>
+              <button
+                onClick={() => navigateTo('/admin')}
+                className="hover:text-emerald-700 transition-colors cursor-pointer"
+              >
+                Администрация
+              </button>
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
 
       {/* Support Letter Modal */}
       <SupportLetterModal

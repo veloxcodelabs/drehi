@@ -72,8 +72,8 @@ test('Invariant sentence matches exact specification', () => {
 });
 
 test('Consistency cache key format integrates image hashes, chosen size and measurements', () => {
-  const personImg = { url: 'https://cdn.example.com/person1.jpg', filename: 'me.jpg', size: 102400 };
-  const garmentImg = { url: 'https://cdn.example.com/garment1.jpg', filename: 'dress.jpg', size: 204800 };
+  const personImg = { id: 'p1', url: 'https://cdn.example.com/person1.jpg', previewUrl: 'https://cdn.example.com/person1.jpg', filename: 'me.jpg', size: 102400 };
+  const garmentImg = { id: 'g1', url: 'https://cdn.example.com/garment1.jpg', previewUrl: 'https://cdn.example.com/garment1.jpg', filename: 'dress.jpg', size: 204800 };
   const measurements = { height: 170, bust: 86, waist: 68, hips: 94 };
 
   const key1 = buildConsistencyCacheKey(personImg, garmentImg, 'M', measurements);

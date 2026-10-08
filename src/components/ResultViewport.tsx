@@ -141,7 +141,7 @@ export const ResultViewport: React.FC<ResultViewportProps> = ({
         <div className="p-4 rounded-xl border border-neutral-200 bg-white space-y-3 shadow-xs">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-semibold text-neutral-800">
-              Готова студийна визия
+              Визуализация с AI – ориентировъчна. За точен размер вижте таблицата с мерки.
             </span>
 
             <a
