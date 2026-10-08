@@ -23,6 +23,10 @@
       "destination": "/api/index.ts"
     },
     {
+      "source": "/uploads/(.*)",
+      "destination": "/api/index.ts"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

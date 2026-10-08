@@ -297,10 +297,11 @@ export default function App() {
         .then(async (res) => {
           const data = await res.json().catch(() => null);
           if (res.ok && data?.ok) {
+            const previewUrl = data.dataUrl || data.previewUrl || data.url;
             setGarmentImage({
               id: 'garment-url-' + Date.now(),
-              url: data.url,
-              previewUrl: data.previewUrl || data.url,
+              url: data.url || previewUrl,
+              previewUrl,
               filename: data.filename || 'garment.jpg',
               size: data.size || 0,
             });

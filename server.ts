@@ -83,6 +83,15 @@ try {
 
 // Serve uploaded user files
 app.use('/uploads', express.static(uploadsDir));
+app.get('/uploads/:filename', (req: Request, res: Response) => {
+  const safeName = path.basename(req.params.filename);
+  const filePath = path.join(uploadsDir, safeName);
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.sendFile(filePath);
+  }
+  return res.status(404).send('Upload not found');
+});
 // Serve public assets (e.g. /embed.js, /embed-demo.html)
 app.use(express.static(path.resolve(__dirname, 'public')));
 
@@ -480,10 +489,14 @@ app.get('/api/fetch-garment', async (req: Request, res: Response) => {
       return res.send(buffer);
     }
 
+    const base64Data = buffer.toString('base64');
+    const dataUrl = `data:${rawMime === 'image/jpg' ? 'image/jpeg' : rawMime};base64,${base64Data}`;
+
     return res.json({
       ok: true,
-      url: directCdnUrl || localUrl,
-      previewUrl: localUrl,
+      url: directCdnUrl || dataUrl,
+      previewUrl: dataUrl,
+      dataUrl,
       localUrl,
       filename,
       size: buffer.length,
