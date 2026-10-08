@@ -72,7 +72,7 @@ app.use('/api', (_req, res, next) => {
 
 // Ensure uploads folder exists (use /tmp/uploads on Vercel to avoid EROFS)
 const isVercelEnv = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-const uploadsDir = isVercelEnv ? '/tmp/uploads' : path.resolve(__dirname, 'public', 'uploads');
+export const uploadsDir = isVercelEnv ? '/tmp/uploads' : path.resolve(__dirname, 'public', 'uploads');
 try {
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
@@ -512,18 +512,86 @@ app.get('/api/fetch-garment', async (req: Request, res: Response) => {
 });
 
 const publicUrlCache = new Map<string, string>();
+const taskTempFiles = new Map<string, Set<string>>();
 
-// Bridge local uploads to public CDN so external AI engines (Vmodel/OpenAI) can fetch raw image bytes
-async function ensurePublicImageUrl(urlOrPath: string): Promise<string> {
+export function registerTaskFiles(taskId: string, urls: (string | undefined)[]) {
+  if (!taskId) return;
+  const filenames = new Set<string>();
+  for (const u of urls) {
+    if (!u || typeof u !== 'string') continue;
+    const match = u.match(/\/uploads\/([^/?#]+)/i);
+    if (match) {
+      filenames.add(match[1]);
+    }
+  }
+  if (filenames.size > 0) {
+    const existing = taskTempFiles.get(taskId) || new Set<string>();
+    filenames.forEach((f) => existing.add(f));
+    taskTempFiles.set(taskId, existing);
+    console.log(`[Temp File Tracking] Task ${taskId} registered ${filenames.size} file(s) for cleanup.`);
+  }
+}
+
+export function cleanupTaskFiles(taskId: string) {
+  if (!taskId) return;
+  const files = taskTempFiles.get(taskId);
+  if (!files || files.size === 0) {
+    taskTempFiles.delete(taskId);
+    return;
+  }
+  taskTempFiles.delete(taskId);
+
+  for (const filename of files) {
+    try {
+      const filePath = path.join(uploadsDir, filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`[Temp File Cleanup] Deleted ${filename} after task ${taskId} finished.`);
+      }
+    } catch (err) {
+      console.warn(`[Temp File Cleanup] Could not delete ${filename}:`, err);
+    }
+  }
+}
+
+export function cleanupExpiredUploads() {
+  try {
+    if (!fs.existsSync(uploadsDir)) return;
+    const files = fs.readdirSync(uploadsDir);
+    const now = Date.now();
+    const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+    for (const file of files) {
+      if (file.startsWith('.')) continue;
+      const fullPath = path.join(uploadsDir, file);
+      try {
+        const stat = fs.statSync(fullPath);
+        if (stat.isFile() && (now - stat.mtimeMs > MAX_AGE_MS)) {
+          fs.unlinkSync(fullPath);
+          console.log(`[Uploads 24h Cleanup] Deleted expired file ${file}`);
+        }
+      } catch {
+        // File may be removed concurrently
+      }
+    }
+  } catch (err) {
+    console.warn('[Uploads Cleanup Error]', err);
+  }
+}
+
+// Hourly cleanup of files older than 24 hours (and run once at startup)
+cleanupExpiredUploads();
+const cleanupInterval = setInterval(cleanupExpiredUploads, 60 * 60 * 1000);
+if (cleanupInterval && typeof cleanupInterval.unref === 'function') {
+  cleanupInterval.unref();
+}
+
+// Save images under a random unguessable filename in our uploads folder and return a direct https URL on drehi.martitony.com
+export async function ensurePublicImageUrl(urlOrPath: string): Promise<string> {
   if (!urlOrPath || typeof urlOrPath !== 'string') return '';
 
-  // If already a direct public web image (not pointing to internal dev or localhost)
-  if (
-    (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')) &&
-    !urlOrPath.includes('run.app') &&
-    !urlOrPath.includes('localhost') &&
-    !urlOrPath.includes('127.0.0.1')
-  ) {
+  // If already on our own domain, return directly
+  if (urlOrPath.startsWith('https://drehi.martitony.com/uploads/')) {
     return urlOrPath;
   }
 
@@ -532,88 +600,88 @@ async function ensurePublicImageUrl(urlOrPath: string): Promise<string> {
     return publicUrlCache.get(urlOrPath)!;
   }
 
-  // Find local file on disk
-  let filePath: string | null = null;
-  const uploadMatch = urlOrPath.match(/\/uploads\/([^/?#]+)/);
-  if (uploadMatch) {
-    const filename = uploadMatch[1];
-    const candidate = path.join(uploadsDir, filename);
-    if (fs.existsSync(candidate)) {
-      filePath = candidate;
-    }
-  }
+  let buffer: Buffer | null = null;
+  let ext = 'jpg';
 
-  // Direct file path
-  if (!filePath && fs.existsSync(urlOrPath)) {
-    filePath = urlOrPath;
-  }
-
-  // If it's a data: URL, save it to a temporary file first
-  if (!filePath && urlOrPath.startsWith('data:image/')) {
+  // 1. Data URL
+  if (urlOrPath.startsWith('data:image/')) {
     const matches = urlOrPath.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
     if (matches && matches.length === 3) {
-      const ext = matches[1].includes('jpeg') || matches[1].includes('jpg') ? 'jpg' : 'png';
-      const tempFilename = `temp_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
-      filePath = path.join(uploadsDir, tempFilename);
-      fs.writeFileSync(filePath, Buffer.from(matches[2], 'base64'));
+      const mime = matches[1].toLowerCase();
+      if (mime.includes('png')) ext = 'png';
+      else if (mime.includes('webp')) ext = 'webp';
+      else ext = 'jpg';
+      buffer = Buffer.from(matches[2], 'base64');
     }
   }
 
-  if (filePath && fs.existsSync(filePath)) {
-    console.log(`[Public Image Bridge] Uploading ${path.basename(filePath)} to public CDN for Vmodel...`);
-    try {
-      const formData = new FormData();
-      const fileBuffer = fs.readFileSync(filePath);
-      const ext = path.extname(filePath).toLowerCase();
-      const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
-      const blob = new Blob([new Uint8Array(fileBuffer)], { type: mime });
-      formData.append('source', blob, path.basename(filePath));
-      formData.append('key', '6d207e02198a847aa98d0a2a901485a5');
-      formData.append('format', 'json');
+  // 2. Local uploads file or path
+  if (!buffer) {
+    let filePath: string | null = null;
+    const uploadMatch = urlOrPath.match(/\/uploads\/([^/?#]+)/);
+    if (uploadMatch) {
+      const filename = uploadMatch[1];
+      const candidate = path.join(uploadsDir, filename);
+      if (fs.existsSync(candidate)) {
+        filePath = candidate;
+      }
+    } else if (fs.existsSync(urlOrPath)) {
+      filePath = urlOrPath;
+    }
 
-      const cdnRes = await fetch('https://freeimage.host/api/1/upload', {
-        method: 'POST',
-        body: formData,
-      });
+    if (filePath && fs.existsSync(filePath)) {
+      try {
+        buffer = fs.readFileSync(filePath);
+        const fileExt = path.extname(filePath).replace('.', '').toLowerCase();
+        if (fileExt) ext = fileExt;
 
-      if (cdnRes.ok) {
-        const cdnData = await cdnRes.json();
-        const directUrl = cdnData?.image?.url || cdnData?.image?.display_url;
-        if (directUrl && typeof directUrl === 'string' && directUrl.startsWith('http')) {
-          console.log(`[Public Image Bridge Success] Direct CDN URL: ${directUrl}`);
+        // If it already is a 64-hex unguessable filename in uploadsDir
+        const baseName = path.basename(filePath);
+        if (/^[a-f0-9]{64}\.[a-zA-Z0-9]+$/i.test(baseName)) {
+          const directUrl = `https://drehi.martitony.com/uploads/${baseName}`;
           publicUrlCache.set(urlOrPath, directUrl);
           return directUrl;
         }
+      } catch (err) {
+        console.warn('[ensurePublicImageUrl] Could not read file:', filePath, err);
       }
-    } catch (cdnErr) {
-      console.warn('[Public Image Bridge] Primary CDN upload failed, trying fallback...', cdnErr);
+    }
+  }
+
+  // 3. Remote URL
+  if (!buffer && (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://'))) {
+    // If it's already an external public image (not localhost or internal dev)
+    if (
+      !urlOrPath.includes('run.app') &&
+      !urlOrPath.includes('localhost') &&
+      !urlOrPath.includes('127.0.0.1')
+    ) {
+      return urlOrPath;
     }
 
     try {
-      // Fallback: Catbox litterbox
-      const fbFormData = new FormData();
-      const fileBuffer = fs.readFileSync(filePath);
-      const blob = new Blob([new Uint8Array(fileBuffer)], { type: 'image/jpeg' });
-      fbFormData.append('reqtype', 'fileupload');
-      fbFormData.append('time', '24h');
-      fbFormData.append('fileToUpload', blob, path.basename(filePath));
-
-      const fbRes = await fetch('https://litterbox.catbox.moe/resources/internals/api.php', {
-        method: 'POST',
-        body: fbFormData,
-      });
-
-      if (fbRes.ok) {
-        const directUrl = (await fbRes.text()).trim();
-        if (directUrl.startsWith('http')) {
-          console.log(`[Public Image Bridge Fallback Success] Direct CDN URL: ${directUrl}`);
-          publicUrlCache.set(urlOrPath, directUrl);
-          return directUrl;
-        }
+      const res = await fetch(urlOrPath);
+      if (res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('png')) ext = 'png';
+        else if (ct.includes('webp')) ext = 'webp';
+        else ext = 'jpg';
+        buffer = Buffer.from(await res.arrayBuffer());
       }
-    } catch (fbErr) {
-      console.error('[Public Image Bridge Error] All CDNs failed:', fbErr);
+    } catch (fetchErr) {
+      console.warn('[ensurePublicImageUrl] Fetch failed for internal URL:', urlOrPath, fetchErr);
     }
+  }
+
+  if (buffer && buffer.length > 0) {
+    // Save in our own uploads folder under a random, unguessable file name (64 hex characters)
+    const randomName = `${crypto.randomBytes(32).toString('hex')}.${ext}`;
+    const destinationPath = path.join(uploadsDir, randomName);
+    fs.writeFileSync(destinationPath, buffer);
+
+    const publicUrl = `https://drehi.martitony.com/uploads/${randomName}`;
+    publicUrlCache.set(urlOrPath, publicUrl);
+    return publicUrl;
   }
 
   return urlOrPath;
@@ -741,6 +809,12 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
         resolution: input?.resolution || '2k',
       }, reservationId);
 
+      const simInputUrls: string[] = [];
+      if (Array.isArray(input?.img_urls)) simInputUrls.push(...input.img_urls.filter((u: any): u is string => typeof u === 'string'));
+      if (typeof input?.swap_image === 'string') simInputUrls.push(input.swap_image);
+      if (typeof input?.target_image === 'string') simInputUrls.push(input.target_image);
+      registerTaskFiles(simulatedTaskId, simInputUrls);
+
       setTimeout(() => {
         const t = simulatedTasks.get(simulatedTaskId);
         if (t && t.status === 'starting') {
@@ -762,6 +836,7 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
             totalTime: 6.0,
             completedAt: Date.now(),
           }).catch((err) => console.error('[Access] Simulated finalize failed', err));
+          cleanupTaskFiles(simulatedTaskId);
         }
       }, 6000);
 
@@ -906,6 +981,12 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
       modelImageUrl: isPublicHttpUrl(referenceUrls[1]) ? referenceUrls[1] : '',
     }, reservationId);
 
+    const taskInputUrls: string[] = [];
+    if (Array.isArray(processedInput.img_urls)) taskInputUrls.push(...processedInput.img_urls.filter((u: any): u is string => typeof u === 'string'));
+    if (typeof processedInput.swap_image === 'string') taskInputUrls.push(processedInput.swap_image);
+    if (typeof processedInput.target_image === 'string') taskInputUrls.push(processedInput.target_image);
+    registerTaskFiles(createdTaskId, taskInputUrls);
+
     if (responseData?.result) {
       responseData.result.remaining = accessCheck.remaining;
       responseData.result.dailyRemaining = accessCheck.dailyRemaining;
@@ -957,9 +1038,11 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
           outputUrls: task.output,
         });
         remaining = fin.remaining;
+        cleanupTaskFiles(taskId);
       } else if (task.status === 'failed' || task.status === 'canceled') {
         const fin = await finalizeTaskResult(taskId, false, task.error || 'Simulated task failed');
         remaining = fin.remaining;
+        cleanupTaskFiles(taskId);
       }
       return res.json({
         code: 200,
@@ -992,6 +1075,7 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
       // itself no longer exists.
       if (vmodelResponse.status === 404) {
         const fin = await finalizeTaskResult(taskId, false, 'Task not found');
+        cleanupTaskFiles(taskId);
         return res.status(404).json({
           error: FAILURE_PUBLIC_MESSAGE,
           remaining: fin.remaining,
@@ -1023,6 +1107,7 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
         const why = signaled ? 'upstream reported the garment was not applied' : 'output matched the model photo';
         console.warn(`[Garment check] ${why}; refunding task ${taskId}`);
         const fin = await finalizeTaskResult(taskId, false, why);
+        cleanupTaskFiles(taskId);
         if (responseData?.result) {
           responseData.result.status = 'failed';
           responseData.result.output = [];
@@ -1048,6 +1133,7 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
         completedAt: Date.now(),
         status: 'succeeded',
       });
+      cleanupTaskFiles(taskId);
       if (responseData?.result) {
         responseData.result.remaining = fin.remaining;
         responseData.result.dailyRemaining = fin.dailyRemaining;
@@ -1058,6 +1144,7 @@ app.get('/api/tasks/:taskId', async (req: Request, res: Response) => {
       const classified = classifyUpstreamFailure(0, rawError);
       logUpstreamFailure(`task-status ${taskStatus} task=${taskId}`, classified, rawError);
       const fin = await finalizeTaskResult(taskId, false, classified.summary);
+      cleanupTaskFiles(taskId);
       if (responseData?.result) {
         responseData.result.error = upstreamSignalsUnappliedGarment(responseData.result)
           ? GARMENT_UNRECOGNIZED_MESSAGE
