@@ -127,6 +127,10 @@ const RAW_VALID_CODES: string[] = [
   'modio', 'lalakids', 'textilebg', 'julia', 'crazykids', 'axil',
   'sportshopbg', 'befashion', 'yanakids', 'denimcity', 'furialeather', 'leks',
   'vintaj',
+  'alfbg', 'bamb', 'bulgarka', 'chakumche', 'goud', 'bogomilmathis',
+  'mayailieva', 'meriknows', 'thekids', 'woolnat', 'muse2design', 'restyled',
+  'kidy', 'choicebg', 'plazhnaroklya', 'pipilota', 'bglook', 'fashionbazar',
+  'angelostyle', 'littlefriends', 'palcho', 'bogatbeden', 'houseofvintage', 'enson',
 ];
 
 const KNOWN_CODES = new Set(RAW_VALID_CODES.map((code) => code.toLowerCase()));
