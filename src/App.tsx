@@ -28,11 +28,9 @@ import { ApiSettingsModal } from './components/ApiSettingsModal';
 import { InviteAccessGate } from './components/InviteAccessGate';
 import { SupportLetterModal } from './components/SupportLetterModal';
 import { AdminDashboard } from './components/AdminDashboard';
-import { CustomerMeasurementsForm } from './components/CustomerMeasurementsForm';
 import {
   SizeChart,
   DEFAULT_SAMPLE_SIZE_ROWS,
-  recommendSize,
   applyFitGuidanceToPrompt,
 } from '../fit_guidance';
 import {
@@ -185,27 +183,6 @@ export default function App() {
     setCustomerMeasurements(nextM);
     saveBodyMeasurements(nextM);
   };
-
-  // Recommendation calculation when both panels have measurements
-  const recommendation = useMemo(() => {
-    const { bust, waist, hips } = customerMeasurements;
-    const isBodyFilled =
-      typeof bust === 'number' && bust >= 50 && bust <= 250 &&
-      typeof waist === 'number' && waist >= 50 && waist <= 250 &&
-      typeof hips === 'number' && hips >= 50 && hips <= 250;
-
-    if (!isBodyFilled || !garmentChart.rows || garmentChart.rows.length === 0) {
-      return { recommendedSize: null, explanationBg: '' };
-    }
-    return recommendSize(garmentChart, customerMeasurements);
-  }, [garmentChart, customerMeasurements]);
-
-  // Preselect recommended size when recommendation is computed
-  useEffect(() => {
-    if (recommendation.recommendedSize) {
-      setChosenSize(recommendation.recommendedSize);
-    }
-  }, [recommendation.recommendedSize]);
 
   // Execution & Task State
   const [currentTask, setCurrentTask] = useState<GenerationTask | null>(null);
@@ -497,7 +474,7 @@ export default function App() {
     }
 
     // Chosen size resolution
-    const activeSize = chosenSize || recommendation.recommendedSize || garmentChart.rows[0]?.size || 'M';
+    const activeSize = chosenSize || garmentChart.rows[0]?.size || 'M';
     if (!chosenSize) {
       setChosenSize(activeSize);
     }
@@ -695,7 +672,7 @@ export default function App() {
 
                   {/* Studio Container */}
                   <div className="p-5 sm:p-6 rounded-2xl border border-neutral-200 bg-white shadow-xs space-y-6">
-                    {/* Section 1: Garment Side (Photo on Left, "Мерки на дрехата" on Right) */}
+                    {/* Section 1: Garment Side (Photo on Left, Size Selection on Right) */}
                     <GarmentSideSection
                       garmentImage={garmentImage}
                       onGarmentChange={handleGarmentImageChange}
@@ -703,7 +680,6 @@ export default function App() {
                       onChartChange={handleGarmentChartChange}
                       chosenSize={chosenSize}
                       onChosenSizeChange={setChosenSize}
-                      recommendedSize={recommendation.recommendedSize}
                       isLoadingGarment={isLoadingGarmentUrl}
                     />
 
@@ -717,20 +693,6 @@ export default function App() {
                       onMeasurementsChange={handleCustomerMeasurementsChange}
                       showEmptyHint={attemptedGenerate}
                     />
-
-                    {/* Recommendation Banner when both panels are filled */}
-                    {recommendation.recommendedSize && (
-                      <div className="p-3.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-neutral-900">
-                            {recommendation.explanationBg || `Препоръчваме размер ${recommendation.recommendedSize}.`}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-neutral-500">
-                          Избран: <strong className="text-neutral-900 font-semibold">{chosenSize || recommendation.recommendedSize}</strong>
-                        </span>
-                      </div>
-                    )}
 
                     <div className="space-y-1.5">
                       <label htmlFor="extra-instructions" className="block text-sm font-semibold text-neutral-900">
