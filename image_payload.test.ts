@@ -37,7 +37,7 @@ test('ensurePublicImageUrl saves image locally under a random unguessable filena
   assert.equal(fs.existsSync(onDiskPath), false, 'File must be deleted after task generation finishes');
 });
 
-test('cleanupExpiredUploads deletes files older than 24 hours and preserves newer files', () => {
+test('cleanupExpiredUploads deletes files older than 30 minutes and preserves newer files', () => {
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
@@ -48,9 +48,9 @@ test('cleanupExpiredUploads deletes files older than 24 hours and preserves newe
   fs.writeFileSync(oldFile, 'expired');
   fs.writeFileSync(newFile, 'active');
 
-  // Set oldFile mtime to 25 hours ago
-  const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
-  fs.utimesSync(oldFile, twentyFiveHoursAgo, twentyFiveHoursAgo);
+  // Set oldFile mtime to 35 minutes ago (exceeding 30 min expiration threshold)
+  const thirtyFiveMinutesAgo = new Date(Date.now() - 35 * 60 * 1000);
+  fs.utimesSync(oldFile, thirtyFiveMinutesAgo, thirtyFiveMinutesAgo);
 
   cleanupExpiredUploads();
 

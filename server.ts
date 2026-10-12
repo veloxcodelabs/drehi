@@ -559,7 +559,7 @@ export function cleanupExpiredUploads() {
     if (!fs.existsSync(uploadsDir)) return;
     const files = fs.readdirSync(uploadsDir);
     const now = Date.now();
-    const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
 
     for (const file of files) {
       if (file.startsWith('.')) continue;
@@ -568,7 +568,7 @@ export function cleanupExpiredUploads() {
         const stat = fs.statSync(fullPath);
         if (stat.isFile() && (now - stat.mtimeMs > MAX_AGE_MS)) {
           fs.unlinkSync(fullPath);
-          console.log(`[Uploads 24h Cleanup] Deleted expired file ${file}`);
+          console.log(`[Uploads 30 min Cleanup] Deleted expired file ${file}`);
         }
       } catch {
         // File may be removed concurrently
@@ -579,9 +579,9 @@ export function cleanupExpiredUploads() {
   }
 }
 
-// Hourly cleanup of files older than 24 hours (and run once at startup)
+// Periodic cleanup of files older than 30 minutes (runs every 5 minutes, and once at startup)
 cleanupExpiredUploads();
-const cleanupInterval = setInterval(cleanupExpiredUploads, 60 * 60 * 1000);
+const cleanupInterval = setInterval(cleanupExpiredUploads, 5 * 60 * 1000);
 if (cleanupInterval && typeof cleanupInterval.unref === 'function') {
   cleanupInterval.unref();
 }
