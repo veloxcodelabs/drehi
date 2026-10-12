@@ -64,6 +64,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [codeInput, setCodeInput] = useState('test');
+  const [creditsInput, setCreditsInput] = useState<number>(100);
   const [codeNotice, setCodeNotice] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeBusy, setCodeBusy] = useState(false);
@@ -355,30 +356,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToStudio }
           <p className="text-xs text-neutral-500 leading-relaxed">
             Всеки код има 3 успешни генерации. Неуспешните не се броят. Кодът <span className="font-semibold text-neutral-700">test</span> е за проверка и също е ограничен до 3 — „Нулирай пробите“ го връща в началото.
           </p>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
             <input
               type="text"
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value)}
-              placeholder="Код, напр. test"
+              placeholder="Код, напр. marikris"
               className="flex-1 px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-emerald-600"
             />
+            <div className="flex items-center gap-1.5 self-start sm:self-auto">
+              <span className="text-xs text-neutral-500 whitespace-nowrap">Брой:</span>
+              <input
+                type="number"
+                min="1"
+                max="1000"
+                value={creditsInput}
+                onChange={(e) => setCreditsInput(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                className="w-16 px-2 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm text-neutral-900 text-center focus:outline-none focus:border-emerald-600"
+              />
+            </div>
             <button
               type="button"
               disabled={codeBusy || !codeInput.trim()}
               onClick={() => token && updateCode('/api/admin/codes/reset', { code: codeInput.trim() }, token)}
               className="px-3 py-2 rounded-lg text-xs font-semibold bg-white hover:bg-neutral-50 border border-neutral-200 text-neutral-800 disabled:opacity-50 cursor-pointer"
             >
-              Нулирай пробите
+              Нулирай
             </button>
             <button
               type="button"
               disabled={codeBusy || !codeInput.trim()}
-              onClick={() => token && updateCode('/api/admin/codes/add-credits', { code: codeInput.trim(), credits: 3 }, token)}
+              onClick={() => token && updateCode('/api/admin/codes/add-credits', { code: codeInput.trim(), credits: creditsInput }, token)}
               className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 cursor-pointer"
             >
-              Добави 3 проби
+              Добави +{creditsInput}
             </button>
+          </div>
+          <div className="flex items-center gap-1.5 pt-0.5 text-xs">
+            <span className="text-neutral-400">Бърз избор:</span>
+            {[3, 10, 50, 100].map((num) => (
+              <button
+                key={num}
+                type="button"
+                onClick={() => setCreditsInput(num)}
+                className={`px-2 py-0.5 rounded border text-xs cursor-pointer transition-colors ${
+                  creditsInput === num
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-semibold'
+                    : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:bg-neutral-100'
+                }`}
+              >
+                +{num}
+              </button>
+            ))}
           </div>
           {codeNotice && (
             <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{codeNotice}</p>
