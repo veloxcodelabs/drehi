@@ -10,6 +10,7 @@ interface HeaderProps {
   hasValidCode?: boolean;
   accessCode?: string;
   remainingGenerations?: number;
+  hideCreditCounter?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,6 +20,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAdmin,
   hasValidCode,
   remainingGenerations = 0,
+  hideCreditCounter = false,
 }) => {
   return (
     <header className="border-b border-neutral-200 bg-white/95 backdrop-blur-md sticky top-0 z-40">
@@ -87,9 +89,11 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Code badge in plain text, no dot */}
         <div className="flex items-center gap-3">
           {hasValidCode ? (
-            <span className="text-xs text-neutral-600">
-              Остават {remainingGenerations} {remainingGenerations === 1 ? 'проба' : 'проби'}
-            </span>
+            !hideCreditCounter && (
+              <span className="text-xs text-neutral-600">
+                Остават {remainingGenerations} {remainingGenerations === 1 ? 'проба' : 'проби'}
+              </span>
+            )
           ) : (
             <span className="text-xs text-neutral-400">
               Само с покана

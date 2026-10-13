@@ -145,22 +145,31 @@ export { DEFAULT_DAILY_PER_VISITOR, formatVisitorDailyLimitMessage } from './vis
 export interface AccessCodeConfig {
   dailyPerVisitor?: number;
   initialCredits?: number;
+  hideCreditCounter?: boolean;
 }
 
 /**
- * Optional per-code configuration overrides (e.g. dailyPerVisitor, initialCredits).
+ * Optional per-code configuration overrides (e.g. dailyPerVisitor, initialCredits, hideCreditCounter).
  * Default daily try-on limit per visitor is 10.
- * Marikris is granted 100 credits.
+ * Marikris is granted 200 credits with credit counter hidden.
  */
 export const CODE_CONFIGS: Record<string, AccessCodeConfig> = {
   marikris: {
-    initialCredits: 100,
+    initialCredits: 200,
+    dailyPerVisitor: 5,
   },
 };
 
 export function getCodeConfig(rawCode?: string | null): AccessCodeConfig | undefined {
   const code = sanitizeCode(rawCode);
   return code ? CODE_CONFIGS[code] : undefined;
+}
+
+export function shouldHideCreditCounter(rawCode?: string | null): boolean {
+  const code = sanitizeCode(rawCode);
+  if (code === 'marikris') return true;
+  const cfg = getCodeConfig(code);
+  return Boolean(cfg?.hideCreditCounter);
 }
 
 export function getCodeInitialCredits(rawCode?: string | null): number {
@@ -208,7 +217,8 @@ export function isKnownAccessCode(code: string): boolean {
   return KNOWN_CODES.has(sanitizeCode(code));
 }
 
-function toPublicStatus(balance: Balance) {
+function toPublicStatus(balance: Balance, code?: string) {
+  const effectiveCode = balance.code || code || '';
   return {
     valid: balance.valid,
     code: balance.code,
@@ -218,6 +228,7 @@ function toPublicStatus(balance: Balance) {
     dailyRemaining: balance.dailyRemaining,
     dailyLimitReached: balance.dailyLimitReached,
     sizeChart: balance.sizeChart ?? null,
+    hideCreditCounter: shouldHideCreditCounter(effectiveCode),
   };
 }
 
@@ -233,10 +244,11 @@ export async function checkAccessCode(rawCode?: string | null) {
       dailyRemaining: 0,
       dailyLimitReached: false,
       sizeChart: null,
+      hideCreditCounter: false,
     };
   }
   const balance = await backend().check(code, isKnownAccessCode(code), getCodeInitialCredits(code));
-  return toPublicStatus(balance);
+  return toPublicStatus(balance, code);
 }
 
 export interface ReservationDecision {

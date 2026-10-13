@@ -116,12 +116,16 @@ test('configurable per-code limits and limit message format', () => {
   assert.equal(formatVisitorDailyLimitMessage(10), 'Достигнахте дневния лимит от 10 проби. Опитайте отново утре.');
 
   // Override limit for custom code
-  CODE_CONFIGS['marikris'] = { dailyPerVisitor: 25 };
-  assert.equal(getVisitorDailyLimit('marikris'), 25);
+  CODE_CONFIGS['custom_brand'] = { dailyPerVisitor: 25 };
+  assert.equal(getVisitorDailyLimit('custom_brand'), 25);
   assert.equal(formatVisitorDailyLimitMessage(25), 'Достигнахте дневния лимит от 25 проби. Опитайте отново утре.');
+  delete CODE_CONFIGS['custom_brand'];
+  assert.equal(getVisitorDailyLimit('custom_brand'), DEFAULT_DAILY_PER_VISITOR);
 
-  delete CODE_CONFIGS['marikris'];
-  assert.equal(getVisitorDailyLimit('marikris'), DEFAULT_DAILY_PER_VISITOR);
+  // Marikris has dailyPerVisitor 5 and 200 initial credits
+  assert.equal(CODE_CONFIGS['marikris']?.initialCredits, 200);
+  assert.equal(CODE_CONFIGS['marikris']?.dailyPerVisitor, 5);
+  assert.equal(getVisitorDailyLimit('marikris'), 5);
 });
 
 test('HTTP server: refuses 11th try with 429 and exact Bulgarian message without consuming code credits', async () => {
@@ -133,9 +137,9 @@ test('HTTP server: refuses 11th try with 429 and exact Bulgarian message without
   const base = `http://127.0.0.1:${address.port}`;
 
   const vid = 'test_visitor_' + Math.random().toString(36).slice(2);
-  const code = 'marikris';
+  const code = 'test';
 
-  // Ensure marikris has plenty of credits for this test
+  // Ensure code has plenty of credits for this test
   await addCreditsToCode(code, 50);
   const balanceBefore = await checkAccessCode(code);
   const initialRemaining = balanceBefore.remaining;
@@ -216,3 +220,65 @@ test('HTTP server: refuses 11th try with 429 and exact Bulgarian message without
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
 });
+
+test('HTTP server: refuses 6th try for marikris with 429 and limit 5 message', async () => {
+  const { default: app } = await import('./server.ts');
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('no port');
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const vid = 'marikris_visitor_' + Math.random().toString(36).slice(2);
+  const code = 'marikris';
+
+  visitorCounter.reset();
+
+  try {
+    // 5 allowed generations for marikris
+    for (let i = 1; i <= 5; i++) {
+      const res = await fetch(`${base}/api/tasks/create`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'cookie': `msl_vid=${vid}`,
+          'x-access-code': code,
+        },
+        body: JSON.stringify({
+          version: 'test-version',
+          input: { prompt: `Marikris look ${i}` },
+          simulate: true,
+          accessCode: code,
+        }),
+      });
+      assert.equal(res.status, 200, `Request ${i} should succeed`);
+    }
+
+    // 6th request must be refused with HTTP 429 and limit 5 message
+    const refusedRes = await fetch(`${base}/api/tasks/create`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'cookie': `msl_vid=${vid}`,
+        'x-access-code': code,
+      },
+      body: JSON.stringify({
+        version: 'test-version',
+        input: { prompt: 'Marikris look 6' },
+        simulate: true,
+        accessCode: code,
+      }),
+    });
+
+    assert.equal(refusedRes.status, 429);
+    const refusedBody = await refusedRes.json();
+    assert.equal(
+      refusedBody.error,
+      'Достигнахте дневния лимит от 5 проби. Опитайте отново утре.'
+    );
+    assert.equal(refusedBody.limit, 5);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+

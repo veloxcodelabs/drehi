@@ -642,6 +642,7 @@ export default function App() {
           hasValidCode={accessStatus.valid}
           accessCode={accessStatus.code}
           remainingGenerations={accessStatus.remaining}
+          hideCreditCounter={Boolean(accessStatus.hideCreditCounter || accessStatus.code?.toLowerCase() === 'marikris')}
         />
       )}
 
@@ -818,11 +819,13 @@ export default function App() {
                           </button>
 
                           {/* Code badge in plain text, no dot */}
-                          <div className="text-center pt-1">
-                            <span className="text-xs text-neutral-500">
-                              Остават {accessStatus.remaining} {accessStatus.remaining === 1 ? 'проба' : 'проби'}
-                            </span>
-                          </div>
+                          {!accessStatus.hideCreditCounter && accessStatus.code?.toLowerCase() !== 'marikris' && (
+                            <div className="text-center pt-1">
+                              <span className="text-xs text-neutral-500">
+                                Остават {accessStatus.remaining} {accessStatus.remaining === 1 ? 'проба' : 'проби'}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

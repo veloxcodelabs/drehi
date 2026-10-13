@@ -64,6 +64,7 @@ export interface AccessCodeStatus {
   visitorDailyRemaining?: number;
   visitorDailyUsed?: number;
   visitorDailyLimitReached?: boolean;
+  hideCreditCounter?: boolean;
 }
 
 export interface GenerationTask {

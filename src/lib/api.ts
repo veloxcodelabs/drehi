@@ -194,6 +194,7 @@ const emptyAccessStatus = (code = ''): AccessCodeStatus => ({
   dailyRemaining: 0,
   dailyLimitReached: false,
   sizeChart: null,
+  hideCreditCounter: false,
 });
 
 /**

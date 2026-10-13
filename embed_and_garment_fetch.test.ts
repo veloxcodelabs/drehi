@@ -202,13 +202,19 @@ test('HTTP endpoint GET /api/code-status returns active boolean with CORS and 60
     assert.deepEqual(Object.keys(testData), ['active']);
     assert.equal(typeof testData.active, 'boolean');
 
-    // 4. marikris code is granted 100 credits and returns active: true
-    assert.equal(CODE_CONFIGS['marikris']?.initialCredits, 100);
+    // 4. marikris code is granted 200 credits with dailyPerVisitor 5 and returns active: true
+    assert.equal(CODE_CONFIGS['marikris']?.initialCredits, 200);
+    assert.equal(CODE_CONFIGS['marikris']?.dailyPerVisitor, 5);
     const marikrisStatus = await checkAccessCode('marikris');
-    assert.ok(marikrisStatus.totalAllowed >= 100, `Expected at least 100 total credits, got ${marikrisStatus.totalAllowed}`);
+    assert.ok(marikrisStatus.totalAllowed >= 200, `Expected at least 200 total credits, got ${marikrisStatus.totalAllowed}`);
+    assert.equal(marikrisStatus.hideCreditCounter, true);
     const marikrisRes = await fetch(`${base}/api/code-status?k=marikris`);
     const marikrisData = await marikrisRes.json();
     assert.deepEqual(marikrisData, { active: true });
+
+    const marikrisAuthRes = await fetch(`${base}/api/auth-code?k=marikris`);
+    const marikrisAuthData = await marikrisAuthRes.json();
+    assert.equal(marikrisAuthData.hideCreditCounter, true);
 
     // 5. OPTIONS preflight returns 204 with CORS and Cache-Control
     const optionsRes = await fetch(`${base}/api/code-status`, { method: 'OPTIONS' });
