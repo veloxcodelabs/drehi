@@ -182,7 +182,9 @@ function balanceFor(
   const codeDoc = state.codes[code];
   if (!codeDoc && !known) return invalidBalance(code);
 
-  const totalAllowed = codeDoc?.totalAllowed ?? defaultAllowed;
+  const totalAllowed = codeDoc
+    ? Math.max(codeDoc.totalAllowed ?? 0, defaultAllowed)
+    : defaultAllowed;
   const used = codeDoc?.used ?? 0;
   const activeHolds = codeDoc ? Object.keys(codeDoc.holds).length : 0;
   const remaining = Math.max(0, totalAllowed - used - activeHolds);

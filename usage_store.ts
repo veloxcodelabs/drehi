@@ -45,8 +45,8 @@ export class UsageStoreError extends Error {
 }
 
 export interface UsageBackend {
-  check(code: string, known: boolean): Promise<Balance>;
-  reserve(code: string, known: boolean): Promise<ReserveOutcome>;
+  check(code: string, known: boolean, defaultAllowed?: number): Promise<Balance>;
+  reserve(code: string, known: boolean, defaultAllowed?: number): Promise<ReserveOutcome>;
   attach(reservationId: string, taskId: string, meta?: RecentTask): Promise<void>;
   commitTask(taskId: string, patch?: Partial<RecentTask>): Promise<FinalizeOutcome>;
   releaseTask(taskId: string): Promise<FinalizeOutcome>;
@@ -121,16 +121,16 @@ export function createFileBackend(filePath: string): UsageBackend {
   };
 
   return {
-    check(code, known) {
+    check(code, known, defaultAllowed) {
       return update((state) => {
-        const result = applyCheck(state, code, { now: Date.now(), known });
+        const result = applyCheck(state, code, { now: Date.now(), known, defaultAllowed });
         return { state: result.state, value: result.balance };
       });
     },
-    reserve(code, known) {
+    reserve(code, known, defaultAllowed) {
       const reservationId = newReservationId();
       return update((state) => {
-        const result = applyReserve(state, code, reservationId, { now: Date.now(), known });
+        const result = applyReserve(state, code, reservationId, { now: Date.now(), known, defaultAllowed });
         return { state: result.state, value: result.outcome };
       });
     },
@@ -418,16 +418,16 @@ function createFirestoreBackend(): UsageBackend {
   };
 
   return {
-    check(code, known) {
+    check(code, known, defaultAllowed) {
       return transactCode(code, (state, now) => {
-        const result = applyCheck(state, code, { now, known });
+        const result = applyCheck(state, code, { now, known, defaultAllowed });
         return { state: result.state, value: result.balance };
       });
     },
-    reserve(code, known) {
+    reserve(code, known, defaultAllowed) {
       const reservationId = newReservationId();
       return transactCode(code, (state, now) => {
-        const result = applyReserve(state, code, reservationId, { now, known });
+        const result = applyReserve(state, code, reservationId, { now, known, defaultAllowed });
         return { state: result.state, value: result.outcome };
       });
     },

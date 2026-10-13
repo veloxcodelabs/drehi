@@ -357,6 +357,52 @@
     img.setAttribute('data-msl-attached', '1');
   }
 
+  function checkCodeStatus(code, onResult) {
+    if (!code) {
+      onResult(false);
+      return;
+    }
+    var statusUrl = originUrl + '/api/code-status?k=' + encodeURIComponent(code);
+    if (typeof fetch === 'function') {
+      fetch(statusUrl, { cache: 'default' })
+        .then(function (res) {
+          if (!res.ok) return null;
+          return res.json();
+        })
+        .then(function (data) {
+          onResult(Boolean(data && data.active === true));
+        })
+        .catch(function () {
+          onResult(false);
+        });
+    } else {
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', statusUrl, true);
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4) {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                var data = JSON.parse(xhr.responseText);
+                onResult(Boolean(data && data.active === true));
+              } catch (e) {
+                onResult(false);
+              }
+            } else {
+              onResult(false);
+            }
+          }
+        };
+        xhr.onerror = function () {
+          onResult(false);
+        };
+        xhr.send();
+      } catch (e) {
+        onResult(false);
+      }
+    }
+  }
+
   function scanAndAttach() {
     var selectors = customSelector ? [customSelector] : defaultSelectors;
     for (var s = 0; s < selectors.length; s++) {
@@ -368,7 +414,7 @@
           attachButtonToImage(img);
         }
       } catch (err) {
-        console.warn('MSL selector error:', err);
+        // Silently ignore any query selector error
       }
     }
   }
@@ -392,13 +438,20 @@
     });
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () {
+  function initEmbed() {
+    checkCodeStatus(defaultCode, function (isActive) {
+      if (!isActive) {
+        // When code is inactive, invalid or out of credits, inject nothing and log nothing
+        return;
+      }
       scanAndAttach();
       setupObserver();
     });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initEmbed);
   } else {
-    scanAndAttach();
-    setupObserver();
+    initEmbed();
   }
 })();

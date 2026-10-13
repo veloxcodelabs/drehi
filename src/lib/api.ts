@@ -1,5 +1,6 @@
 import { GenerationTask, TaskApiResult, AccessCodeStatus, SizeChart } from '../types';
 import { prepareImageFile } from './prepareImage';
+import { getOrSetVisitorId } from './visitor';
 import {
   IMAGE_TOO_LARGE_MESSAGE,
   IMAGE_UPLOAD_FAILED_MESSAGE,
@@ -15,6 +16,9 @@ export class ApiRequestError extends Error {
   dailyLimitReached?: boolean;
   used?: number;
   totalAllowed?: number;
+  visitorDailyLimit?: number;
+  visitorDailyRemaining?: number;
+  visitorDailyLimitReached?: boolean;
 
   constructor(
     message: string,
@@ -26,6 +30,9 @@ export class ApiRequestError extends Error {
       dailyLimitReached?: boolean;
       used?: number;
       totalAllowed?: number;
+      visitorDailyLimit?: number;
+      visitorDailyRemaining?: number;
+      visitorDailyLimitReached?: boolean;
     } = {}
   ) {
     super(message);
@@ -37,6 +44,9 @@ export class ApiRequestError extends Error {
     this.dailyLimitReached = extra.dailyLimitReached;
     this.used = extra.used;
     this.totalAllowed = extra.totalAllowed;
+    this.visitorDailyLimit = extra.visitorDailyLimit;
+    this.visitorDailyRemaining = extra.visitorDailyRemaining;
+    this.visitorDailyLimitReached = extra.visitorDailyLimitReached;
   }
 }
 
@@ -193,9 +203,14 @@ export async function validateAccessCode(code: string): Promise<AccessCodeStatus
   const cleanCode = (code || '').trim().toLowerCase();
   if (!cleanCode) return emptyAccessStatus('');
 
+  const vid = getOrSetVisitorId();
   try {
     const res = await fetch(`/api/auth-code?k=${encodeURIComponent(cleanCode)}`, {
       cache: 'no-store',
+      credentials: 'include',
+      headers: {
+        ...(vid ? { 'x-visitor-id': vid } : {}),
+      },
     });
     const data = await readJsonBody(res);
     if (data && typeof data.valid === 'boolean' && typeof data.remaining === 'number') {
@@ -234,11 +249,15 @@ export async function createTask(params: {
   if (requestContainsImageData(params.input)) {
     throw new ApiRequestError(IMAGE_TOO_LARGE_MESSAGE, { status: 413, code: 'PAYLOAD_TOO_LARGE' });
   }
+
+  const vid = getOrSetVisitorId();
   const res = await fetch('/api/tasks/create', {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(params.accessCode ? { 'x-access-code': params.accessCode } : {}),
+      ...(vid ? { 'x-visitor-id': vid } : {}),
     },
     body: JSON.stringify({
       version: params.version,
@@ -270,6 +289,9 @@ export async function createTask(params: {
       dailyLimitReached: data?.dailyLimitReached,
       used: data?.used,
       totalAllowed: data?.totalAllowed,
+      visitorDailyLimit: typeof data?.limit === 'number' ? data.limit : undefined,
+      visitorDailyRemaining: typeof data?.remainingToday === 'number' ? data.remainingToday : undefined,
+      visitorDailyLimitReached: res.status === 429 && data?.code === 'VISITOR_DAILY_LIMIT_REACHED',
     }
   );
 }

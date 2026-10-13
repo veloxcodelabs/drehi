@@ -60,6 +60,10 @@ export interface AccessCodeStatus {
   dailyLimitReached: boolean;
   message?: string;
   sizeChart?: SizeChart | null;
+  visitorDailyLimit?: number;
+  visitorDailyRemaining?: number;
+  visitorDailyUsed?: number;
+  visitorDailyLimitReached?: boolean;
 }
 
 export interface GenerationTask {

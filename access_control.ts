@@ -140,6 +140,45 @@ export const NO_TRIES_MESSAGE = 'Пробите свършиха – пишет�
 export const DAILY_CAP_MESSAGE =
   'Дневният лимит за генериране в системата е достигнат. Моля, опитайте отново утре.';
 
+export { DEFAULT_DAILY_PER_VISITOR, formatVisitorDailyLimitMessage } from './visitor_limit.js';
+
+export interface AccessCodeConfig {
+  dailyPerVisitor?: number;
+  initialCredits?: number;
+}
+
+/**
+ * Optional per-code configuration overrides (e.g. dailyPerVisitor, initialCredits).
+ * Default daily try-on limit per visitor is 10.
+ * Marikris is granted 100 credits.
+ */
+export const CODE_CONFIGS: Record<string, AccessCodeConfig> = {
+  marikris: {
+    initialCredits: 100,
+  },
+};
+
+export function getCodeConfig(rawCode?: string | null): AccessCodeConfig | undefined {
+  const code = sanitizeCode(rawCode);
+  return code ? CODE_CONFIGS[code] : undefined;
+}
+
+export function getCodeInitialCredits(rawCode?: string | null): number {
+  const cfg = getCodeConfig(rawCode);
+  if (cfg && typeof cfg.initialCredits === 'number' && cfg.initialCredits > 0) {
+    return cfg.initialCredits;
+  }
+  return 3;
+}
+
+export function getVisitorDailyLimit(rawCode?: string | null): number {
+  const code = sanitizeCode(rawCode);
+  if (code && typeof CODE_CONFIGS[code]?.dailyPerVisitor === 'number') {
+    return CODE_CONFIGS[code].dailyPerVisitor!;
+  }
+  return 10;
+}
+
 export interface CodeRecord {
   code: string;
   totalAllowed: number;
@@ -196,7 +235,7 @@ export async function checkAccessCode(rawCode?: string | null) {
       sizeChart: null,
     };
   }
-  const balance = await backend().check(code, isKnownAccessCode(code));
+  const balance = await backend().check(code, isKnownAccessCode(code), getCodeInitialCredits(code));
   return toPublicStatus(balance);
 }
 
@@ -233,7 +272,7 @@ export async function reserveGeneration(rawCode?: string | null): Promise<Reserv
     };
   }
 
-  const outcome = await backend().reserve(code, isKnownAccessCode(code));
+  const outcome = await backend().reserve(code, isKnownAccessCode(code), getCodeInitialCredits(code));
   const base = {
     remaining: outcome.balance.remaining,
     totalAllowed: outcome.balance.totalAllowed,

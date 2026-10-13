@@ -89,6 +89,7 @@ test('embed.js exists in public directory and contains required MSL integration 
   assert.match(content, /MutationObserver/, 'embed.js should use MutationObserver for dynamic Next.js sites');
   assert.match(content, /embed=1/, 'embed.js should open iframe with embed=1 parameter');
   assert.match(content, /removeChild\(modalContainer\)/, 'embed.js should remove modalContainer from DOM on close');
+  assert.match(content, /\/api\/code-status\?k=/, 'embed.js should call /api/code-status?k= before injecting buttons');
 });
 
 test('App in embed=1 mode does not restore previous task to currentTask', () => {
@@ -166,3 +167,56 @@ test('HTTP endpoint /api/fetch-garment and static files via Express', async () =
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
 });
+
+test('HTTP endpoint GET /api/code-status returns active boolean with CORS and 60s cache', async () => {
+  const { default: app } = await import('./server.js') as { default: Express };
+  const { addCreditsToCode, checkAccessCode, CODE_CONFIGS } = await import('./access_control.js');
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as AddressInfo).port;
+  const base = `http://127.0.0.1:${port}`;
+
+  try {
+    // 1. Missing code returns {"active": false} with CORS and cache-control
+    const missingRes = await fetch(`${base}/api/code-status`);
+    assert.equal(missingRes.status, 200);
+    assert.equal(missingRes.headers.get('access-control-allow-origin'), '*');
+    assert.match(missingRes.headers.get('cache-control') || '', /max-age=60/);
+    const missingData = await missingRes.json();
+    assert.deepEqual(missingData, { active: false });
+
+    // 2. Unknown code returns {"active": false}
+    const unknownRes = await fetch(`${base}/api/code-status?k=nonexistent_code_xyz`);
+    assert.equal(unknownRes.status, 200);
+    assert.equal(unknownRes.headers.get('access-control-allow-origin'), '*');
+    assert.match(unknownRes.headers.get('cache-control') || '', /max-age=60/);
+    const unknownData = await unknownRes.json();
+    assert.deepEqual(unknownData, { active: false });
+
+    // 3. Known valid code returns {"active": true} and contains no other keys
+    const testRes = await fetch(`${base}/api/code-status?k=test`);
+    assert.equal(testRes.status, 200);
+    assert.equal(testRes.headers.get('access-control-allow-origin'), '*');
+    assert.match(testRes.headers.get('cache-control') || '', /max-age=60/);
+    const testData = await testRes.json();
+    assert.deepEqual(Object.keys(testData), ['active']);
+    assert.equal(typeof testData.active, 'boolean');
+
+    // 4. marikris code is granted 100 credits and returns active: true
+    assert.equal(CODE_CONFIGS['marikris']?.initialCredits, 100);
+    const marikrisStatus = await checkAccessCode('marikris');
+    assert.ok(marikrisStatus.totalAllowed >= 100, `Expected at least 100 total credits, got ${marikrisStatus.totalAllowed}`);
+    const marikrisRes = await fetch(`${base}/api/code-status?k=marikris`);
+    const marikrisData = await marikrisRes.json();
+    assert.deepEqual(marikrisData, { active: true });
+
+    // 5. OPTIONS preflight returns 204 with CORS and Cache-Control
+    const optionsRes = await fetch(`${base}/api/code-status`, { method: 'OPTIONS' });
+    assert.equal(optionsRes.status, 204);
+    assert.equal(optionsRes.headers.get('access-control-allow-origin'), '*');
+    assert.match(optionsRes.headers.get('cache-control') || '', /max-age=60/);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+

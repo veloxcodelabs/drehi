@@ -21,8 +21,18 @@ import {
   resetCodeUsage,
   getSizeChartForCode,
   saveSizeChartForCode,
+  getVisitorDailyLimit,
+  formatVisitorDailyLimitMessage,
+  isKnownAccessCode,
   UsageStoreError,
 } from './access_control.js';
+import {
+  extractVisitorId,
+  hashVisitorId,
+  visitorCounter,
+  VISITOR_COOKIE_NAME,
+  ONE_YEAR_SECONDS,
+} from './visitor_limit.js';
 import { processSupportLetter, loadSubmissionPdf, getAllSubmissions } from './support_letter_service.js';
 import {
   classifyUpstreamFailure,
@@ -67,6 +77,22 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/api', (_req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
+// Ensure anonymous visitor cookie msl_vid (SameSite=None; Secure, 1-year expiry) for iframe embeds and direct visits
+app.use((req: Request, res: Response, next) => {
+  const cookieHeader = req.headers?.cookie || '';
+  if (!cookieHeader.includes(`${VISITOR_COOKIE_NAME}=`)) {
+    const newVid = 'msl_' + crypto.randomBytes(16).toString('hex');
+    res.cookie(VISITOR_COOKIE_NAME, newVid, {
+      maxAge: ONE_YEAR_SECONDS * 1000,
+      sameSite: 'none',
+      secure: true,
+      path: '/',
+      httpOnly: false,
+    });
+  }
   next();
 });
 
@@ -130,7 +156,18 @@ app.get('/api/auth-code', async (req: Request, res: Response) => {
   try {
     const code = (req.query.k as string) || (req.headers['x-access-code'] as string);
     const result = await checkAccessCode(code);
-    return res.json(result);
+    const { visitorId } = extractVisitorId(req);
+    const visitorHash = hashVisitorId(visitorId);
+    const visitorLimit = getVisitorDailyLimit(code);
+    const visitorUsed = visitorCounter.getCount(visitorHash, code);
+    const visitorRemaining = Math.max(0, visitorLimit - visitorUsed);
+    return res.json({
+      ...result,
+      visitorDailyLimit: visitorLimit,
+      visitorDailyUsed: visitorUsed,
+      visitorDailyRemaining: visitorRemaining,
+      visitorDailyLimitReached: visitorUsed >= visitorLimit,
+    });
   } catch (error) {
     console.error('[Access] auth-code failed:', error);
     return res.status(503).json({
@@ -143,6 +180,43 @@ app.get('/api/auth-code', async (req: Request, res: Response) => {
       dailyLimitReached: false,
       message: STORAGE_PUBLIC_MESSAGE,
     });
+  }
+});
+
+// Lightweight public endpoint to check if an access code has credits left and is active.
+// Returns {"active": true|false} — false when the code is unknown, disabled, expired,
+// out of credits, or the global daily cap is reached. Return no other data.
+// Includes CORS (Access-Control-Allow-Origin: *) and cache for 60 seconds.
+app.options('/api/code-status', (_req: Request, res: Response) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.status(204).end();
+});
+
+app.get('/api/code-status', async (req: Request, res: Response) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Cache-Control', 'public, max-age=60');
+
+  try {
+    const rawCode = (req.query.k as string) || (req.query.code as string) || '';
+    const clean = sanitizeCode(rawCode);
+    if (!clean || !isKnownAccessCode(clean)) {
+      return res.json({ active: false });
+    }
+    const result = await checkAccessCode(clean);
+    const active = Boolean(
+      result.valid &&
+      result.remaining > 0 &&
+      !result.dailyLimitReached &&
+      result.dailyRemaining > 0
+    );
+    return res.json({ active });
+  } catch (_error) {
+    return res.json({ active: false });
   }
 });
 
@@ -760,6 +834,39 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
       (req.headers['x-access-code'] as string)
     );
 
+    // Identify visitor (cookie "msl_vid" -> fallback "x-visitor-id" -> fallback client IP)
+    const { visitorId, source } = extractVisitorId(req);
+    const visitorHash = hashVisitorId(visitorId);
+    const visitorLimit = getVisitorDailyLimit(accessCode);
+
+    // If request didn't already have the cookie, make sure response sets it
+    if (source !== 'cookie') {
+      const newVid = 'msl_' + crypto.randomBytes(16).toString('hex');
+      res.cookie(VISITOR_COOKIE_NAME, newVid, {
+        maxAge: ONE_YEAR_SECONDS * 1000,
+        sameSite: 'none',
+        secure: true,
+        path: '/',
+        httpOnly: false,
+      });
+    }
+
+    // Check visitor's generations for the current day (Europe/Sofia date) for the same access code.
+    const visitorUsedToday = visitorCounter.getCount(visitorHash, accessCode);
+    if (visitorUsedToday >= visitorLimit) {
+      const msg = formatVisitorDailyLimitMessage(visitorLimit);
+      console.warn(
+        `[Access] Visitor daily limit reached for code "${accessCode}" (${visitorUsedToday}/${visitorLimit})`
+      );
+      return res.status(429).json({
+        error: msg,
+        code: 'VISITOR_DAILY_LIMIT_REACHED',
+        limit: visitorLimit,
+        usedToday: visitorUsedToday,
+        remainingToday: 0,
+      });
+    }
+
     const accessCheck = await reserveGeneration(accessCode);
     if (!accessCheck.allowed || !accessCheck.reservationId) {
       return res.status(accessCheck.statusCode).json({
@@ -801,6 +908,9 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
       };
 
       simulatedTasks.set(simulatedTaskId, newTask);
+      // Generation start succeeded: count towards visitor limit
+      visitorCounter.increment(visitorHash, accessCode);
+
       await registerPendingTask(simulatedTaskId, accessCode, {
         prompt: input?.prompt || 'Simulated Generation',
         modelName: 'GPT Image 2.5 (Simulated)',
@@ -849,6 +959,8 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
           remaining: accessCheck.remaining,
           dailyRemaining: accessCheck.dailyRemaining,
           dailyLimitReached: accessCheck.dailyLimitReached,
+          visitorDailyLimit: visitorLimit,
+          visitorDailyRemaining: Math.max(0, visitorLimit - (visitorUsedToday + 1)),
         },
         message: {
           en: 'Task created successfully',
@@ -972,6 +1084,9 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
       });
     }
 
+    // Upstream call succeeded! Count this successful generation start.
+    visitorCounter.increment(visitorHash, accessCode);
+
     await registerPendingTask(createdTaskId, accessCode, {
       prompt: processedInput.prompt || input?.prompt || '',
       modelName: input?.modelName || 'GPT Image 2.5',
@@ -991,6 +1106,8 @@ app.post('/api/tasks/create', async (req: Request, res: Response) => {
       responseData.result.remaining = accessCheck.remaining;
       responseData.result.dailyRemaining = accessCheck.dailyRemaining;
       responseData.result.dailyLimitReached = accessCheck.dailyLimitReached;
+      responseData.result.visitorDailyLimit = visitorLimit;
+      responseData.result.visitorDailyRemaining = Math.max(0, visitorLimit - (visitorUsedToday + 1));
     }
 
     return res.json(responseData);

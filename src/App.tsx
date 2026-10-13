@@ -4,8 +4,10 @@ import {
   Loader2,
   AlertCircle,
   Mail,
+  Clock,
 } from 'lucide-react';
 import { GenerationTask, UploadedImage, AccessCodeStatus, CustomerMeasurements } from './types';
+import { getOrSetVisitorId } from './lib/visitor';
 import {
   getStoredSimulateMode,
   getStoredHistory,
@@ -188,7 +190,13 @@ export default function App() {
   const [currentTask, setCurrentTask] = useState<GenerationTask | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generalError, setGeneralError] = useState<string | null>(null);
+  const [visitorLimitNotice, setVisitorLimitNotice] = useState<string | null>(null);
   const [history, setHistory] = useState<GenerationTask[]>([]);
+
+  useEffect(() => {
+    // Initialize anonymous first-party visitor cookie on mount
+    getOrSetVisitorId();
+  }, []);
 
   // Polling ref
   const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -499,6 +507,8 @@ export default function App() {
 
     setIsGenerating(true);
     setCurrentTask(null);
+    setGeneralError(null);
+    setVisitorLimitNotice(null);
 
     // Automatic boutique fashion prompt tailored for high-end lookbook
     const autoPrompt = `High-end fashion editorial lookbook photography of the exact uploaded garment worn by the model. Immaculate studio lighting, soft shadows, sharp textile drape, authentic fabric textures, luxury apparel catalogue photo. Neutral clean backdrop.`;
@@ -567,6 +577,17 @@ export default function App() {
             used: err.used,
             totalAllowed: err.totalAllowed,
           });
+        }
+        if (
+          err.status === 429 &&
+          (err.code === 'VISITOR_DAILY_LIMIT_REACHED' ||
+            err.visitorDailyLimitReached ||
+            err.message?.includes('дневен лимит') ||
+            err.message?.includes('дневния лимит'))
+        ) {
+          setVisitorLimitNotice(err.message);
+          setGeneralError(null);
+          return;
         }
         setGeneralError(err.message);
         if (err.code === 'NO_TRIES') {
@@ -644,8 +665,46 @@ export default function App() {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                 {/* Left Column: Try-On Studio Panels */}
                 <div className="lg:col-span-7 xl:col-span-7 space-y-5">
+                  {/* Visitor Daily Limit (429) Notice */}
+                  {visitorLimitNotice && (
+                    <div className="p-4 sm:p-5 bg-amber-50/90 border border-amber-200/90 rounded-2xl text-amber-950 flex items-start gap-3.5 shadow-xs">
+                      <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                        <Clock className="w-4 h-4 text-amber-700" />
+                      </div>
+                      <div className="flex-1 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-sm text-amber-950">Дневен лимит за проби</p>
+                          <button
+                            type="button"
+                            onClick={() => setVisitorLimitNotice(null)}
+                            className="text-amber-700 hover:text-amber-950 text-xs font-semibold px-2 py-0.5 rounded cursor-pointer"
+                            title="Затвори"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <p className="text-xs sm:text-sm font-semibold text-amber-900 leading-relaxed">
+                          {visitorLimitNotice}
+                        </p>
+                        <p className="text-xs text-amber-800/90 leading-relaxed">
+                          Лимитът се обновява автоматично в полунощ. Можете да прегледате досегашните си резултати в секция „Галерия“.
+                        </p>
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('gallery')}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-200/80 hover:bg-amber-300 text-amber-950 transition-colors cursor-pointer"
+                          >
+                            <span>Отвори галерията</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* General Error Notice */}
-                  {generalError && (
+                  {generalError && !visitorLimitNotice && (
                     <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-3 shadow-xs">
                       <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                       <div className="flex-1 space-y-1">
