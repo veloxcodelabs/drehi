@@ -19,6 +19,10 @@
       "destination": "/api/config.ts"
     },
     {
+      "source": "/api/code-status",
+      "destination": "/api/code-status.ts"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.ts"
     },

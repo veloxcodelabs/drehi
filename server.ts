@@ -42,7 +42,12 @@ import {
   UNCONFIGURED_PUBLIC_MESSAGE,
 } from './generation_errors.js';
 import { applyExtraInstructions } from './extra_instructions.js';
-import { IMAGE_TOO_LARGE_MESSAGE, isPublicHttpUrl, requestContainsImageData } from './image_payload.js';
+import {
+  IMAGE_TOO_LARGE_MESSAGE,
+  IMAGE_UPLOAD_FAILED_MESSAGE,
+  isPublicHttpUrl,
+  requestContainsImageData,
+} from './image_payload.js';
 import {
   GARMENT_UNRECOGNIZED_MESSAGE,
   outputMatchesModelPhoto,
@@ -262,9 +267,13 @@ app.get('/api/config', (_req: Request, res: Response) => {
 // File upload endpoint: accepts base64 dataUrl or binary image
 app.post('/api/upload', async (req: Request, res: Response) => {
   try {
-    const { dataUrl, filename: originalName } = req.body;
+    const { dataUrl, filename: originalName } = req.body || {};
     if (!dataUrl || typeof dataUrl !== 'string') {
       return res.status(400).json({ error: 'Missing or invalid dataUrl' });
+    }
+
+    if (dataUrl.length > 4_000_000) {
+      return res.status(413).json({ error: IMAGE_TOO_LARGE_MESSAGE, code: 'PAYLOAD_TOO_LARGE' });
     }
 
     const matches = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
@@ -272,31 +281,33 @@ app.post('/api/upload', async (req: Request, res: Response) => {
     let buffer: Buffer;
 
     if (matches && matches.length === 3) {
-      const mime = matches[1];
+      const mime = matches[1].toLowerCase();
       if (mime.includes('jpeg') || mime.includes('jpg')) extension = 'jpg';
       else if (mime.includes('webp')) extension = 'webp';
       else if (mime.includes('gif')) extension = 'gif';
       buffer = Buffer.from(matches[2], 'base64');
     } else {
-      // Direct base64 string
       buffer = Buffer.from(dataUrl, 'base64');
     }
 
-    const uniqueId = crypto.randomBytes(8).toString('hex');
-    const safeBase = originalName
-      ? path.basename(originalName).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30)
-      : 'upload';
-    const filename = `${safeBase}_${Date.now()}_${uniqueId}.${extension}`;
+    if (buffer.length > 3_000_000) {
+      return res.status(413).json({ error: IMAGE_TOO_LARGE_MESSAGE, code: 'PAYLOAD_TOO_LARGE' });
+    }
+
+    const randomHex = crypto.randomBytes(32).toString('hex');
+    const filename = `${randomHex}.${extension}`;
     const filePath = path.join(uploadsDir, filename);
 
     fs.writeFileSync(filePath, buffer);
 
+    cleanupExpiredUploads();
+
     const baseUrl = getBaseUrl(req);
     const localUrl = `${baseUrl}/uploads/${filename}`;
-    const directCdnUrl = await ensurePublicImageUrl(filePath);
+    const publicUrl = `https://drehi.martitony.com/uploads/${filename}`;
 
     return res.json({
-      url: directCdnUrl || localUrl,
+      url: publicUrl,
       localUrl,
       filename,
       size: buffer.length,
@@ -304,7 +315,11 @@ app.post('/api/upload', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error handling upload:', error);
-    return res.status(500).json({ error: error.message || 'Failed to save uploaded file' });
+    const tooBig = typeof req.body?.dataUrl === 'string' && req.body.dataUrl.length > 4_000_000;
+    return res.status(tooBig ? 413 : 502).json({
+      error: tooBig ? IMAGE_TOO_LARGE_MESSAGE : IMAGE_UPLOAD_FAILED_MESSAGE,
+      code: tooBig ? 'PAYLOAD_TOO_LARGE' : 'UPLOAD_FAILED',
+    });
   }
 });
 
