@@ -2,9 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
+
+process.env.DISABLE_SERVER_AUTOSTART = '1';
+process.env.VERCEL = '1';
+
 import { requestContainsImageData } from './image_payload.js';
-import { uploadsDir, ensurePublicImageUrl, registerTaskFiles, cleanupTaskFiles, cleanupExpiredUploads } from './server.js';
+const { uploadsDir, ensurePublicImageUrl, registerTaskFiles, cleanupTaskFiles, cleanupExpiredUploads } = await import('./server.js');
 
 test('requestContainsImageData flags data URLs and ignores normal prompts', () => {
   assert.equal(requestContainsImageData({ prompt: 'lookbook', extra_instructions: 'по-дълга' }), false);
@@ -61,47 +67,46 @@ test('cleanupExpiredUploads deletes files older than 30 minutes and preserves ne
   if (fs.existsSync(newFile)) fs.unlinkSync(newFile);
 });
 
-test('api/upload handler saves locally with 64-hex filename and never uses 3rd party host', async () => {
-  const uploadHandler = (await import('./api/upload.js')).default;
+test('api/upload Express handler saves locally with 64-hex filename and never uses 3rd party host', async () => {
+  const { default: app } = await import('./server.js');
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as AddressInfo).port;
+  const base = `http://127.0.0.1:${port}`;
+
   const sampleDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
-  let statusCode = 0;
-  let jsonResponse: any = null;
-  const mockRes = {
-    status(code: number) {
-      statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      jsonResponse = payload;
-      return this;
-    },
-  };
+  try {
+    const res = await fetch(`${base}/api/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl: sampleDataUrl }),
+    });
 
-  await uploadHandler({ method: 'POST', body: { dataUrl: sampleDataUrl } }, mockRes);
+    assert.equal(res.status, 200);
+    const jsonResponse = await res.json();
+    assert.ok(jsonResponse && jsonResponse.url);
+    assert.ok(jsonResponse.url.startsWith('https://drehi.martitony.com/uploads/'), `URL must be on our domain: ${jsonResponse.url}`);
+    assert.match(jsonResponse.filename, /^[a-f0-9]{64}\.png$/i, 'Filename must be 64-hex unguessable');
 
-  assert.equal(statusCode, 200);
-  assert.ok(jsonResponse && jsonResponse.url);
-  assert.ok(jsonResponse.url.startsWith('https://drehi.martitony.com/uploads/'), `URL must be on our domain: ${jsonResponse.url}`);
-  assert.match(jsonResponse.filename, /^[a-f0-9]{64}\.png$/i, 'Filename must be 64-hex unguessable');
+    // Also verify file was written locally in uploadsDir
+    const onDisk = path.join(uploadsDir, jsonResponse.filename);
+    assert.ok(fs.existsSync(onDisk), 'Uploaded file must exist in uploads directory');
+    if (fs.existsSync(onDisk)) fs.unlinkSync(onDisk);
 
-  // Verify oversized payload gives 413
-  let errorStatus = 0;
-  let errorJson: any = null;
-  const mockErrRes = {
-    status(code: number) {
-      errorStatus = code;
-      return this;
-    },
-    json(payload: any) {
-      errorJson = payload;
-      return this;
-    },
-  };
-
-  const hugePayload = 'data:image/png;base64,' + 'A'.repeat(4_500_000);
-  await uploadHandler({ method: 'POST', body: { dataUrl: hugePayload } }, mockErrRes);
-  assert.equal(errorStatus, 413);
-  assert.equal(errorJson?.code, 'PAYLOAD_TOO_LARGE');
+    // Verify oversized payload gives 413
+    const hugePayload = 'data:image/png;base64,' + 'A'.repeat(4_500_000);
+    const errRes = await fetch(`${base}/api/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl: hugePayload }),
+    });
+    assert.equal(errRes.status, 413);
+    const errJson = await errRes.json();
+    assert.equal(errJson?.code, 'PAYLOAD_TOO_LARGE');
+  } finally {
+    server.close();
+  }
 });
+
 
